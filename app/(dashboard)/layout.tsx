@@ -6,7 +6,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="min-h-screen bg-[#f5f7fb] md:flex">
             <aside className="flex flex-col border-b border-slate-200 bg-white md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r">
                 <div className="px-6 pt-7 pb-4">
-                    <p className="text-lg font-black tracking-tight text-blue-800">SUMAQ <span className="text-slate-900">ILLARY</span></p>
+                    <p className="text-lg font-black tracking-tight text-blue-800">KCJ</p>
                     <p className="mt-1 text-xs tracking-widest text-slate-400">COTIZACIONES PRO</p>
                 </div>
                 <NavLinks />
