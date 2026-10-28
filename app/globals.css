@@ -1,26 +1,14 @@
 @import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+:root {color-scheme:light;--background:#f5f7fb;--foreground:#16243b}
+body {background:var(--background);color:var(--foreground);font-family:Arial,Helvetica,sans-serif}
+.field {width:100%;border:1px solid #dce3ed;border-radius:.65rem;background:#fff;padding:.65rem .8rem;outline:none;min-width:0}
+.field:focus {border-color:#2563eb;box-shadow:0 0 0 3px #dbeafe}
+.panel {background:#fff;border:1px solid #e3e9f2;border-radius:1rem;box-shadow:0 5px 24px #1d35530a;overflow:hidden}
+.page-title {font-size:clamp(1.7rem,3vw,2.2rem);font-weight:800;letter-spacing:-.04em;color:#14233d}
+.eyebrow {font-size:.7rem;letter-spacing:.17em;color:#2563eb;font-weight:800;margin-bottom:.45rem}
+.btn-primary {background:#1d4ed8;color:white;padding:.7rem 1.1rem;border-radius:.7rem;font-weight:700;font-size:.875rem;cursor:pointer}
+.btn-primary:hover {background:#1e40af}
+.btn-primary:disabled {opacity:.5;cursor:wait}
+.btn-secondary {background:#f1f5f9;color:#334155;padding:.7rem 1.1rem;border-radius:.7rem;font-weight:600;font-size:.875rem;cursor:pointer}
+.pill-green,.pill-gray {display:inline-block;border-radius:999px;padding:.25rem .65rem;font-size:.75rem;font-weight:700}
+.pill-green {background:#dcfce7;color:#166534}.pill-gray {background:#f1f5f9;color:#64748b}
