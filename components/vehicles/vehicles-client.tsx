@@ -1,6 +1,6 @@
-
 "use client";
 
+import { viewStyles } from "../ui/view-styles";
 import {
     useEffect,
     useState,
@@ -401,9 +401,9 @@ export default function VehiclesClient({
     );
 
     return (
-        <section className="space-y-6">
+        <section className={viewStyles.page}>
             {/* ENCABEZADO */}
-            <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div className={viewStyles.header}>
                 <div>
                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
                         Catálogos comerciales
@@ -461,8 +461,8 @@ export default function VehiclesClient({
             </div>
 
             {/* TABLA */}
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className={viewStyles.panel}>
+                <div className={viewStyles.toolbar}>
                     <form
                         onSubmit={submitSearch}
                         className="flex w-full gap-2 sm:max-w-lg"
@@ -509,8 +509,8 @@ export default function VehiclesClient({
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wider text-slate-600">
+                    <table className={viewStyles.table}>
+                        <thead className={viewStyles.tableHead}>
                             {tab === "types" ? (
                                 <tr>
                                     <th className="px-5 py-4">Tipo</th>

@@ -35,7 +35,11 @@ const STATUS_CONFIG = {
   },
 } as const;
 
-function formatDate(date: Date) {
+function formatDate(date: Date | null) {
+  if (!date) {
+    return "—";
+  }
+
   const value = date.toISOString().slice(0, 10);
   const [year, month, day] = value.split("-");
 
@@ -130,8 +134,8 @@ async function Verification({
 
         <div
           className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border ${isIssued
-              ? "border-emerald-100 bg-emerald-50 text-emerald-600"
-              : "border-amber-100 bg-amber-50 text-amber-600"
+            ? "border-emerald-100 bg-emerald-50 text-emerald-600"
+            : "border-amber-100 bg-amber-50 text-amber-600"
             }`}
         >
           {isIssued ? (
@@ -168,8 +172,8 @@ async function Verification({
         <div>
           <p
             className={`text-xs font-bold uppercase tracking-wider ${isIssued
-                ? "text-emerald-600"
-                : "text-amber-600"
+              ? "text-emerald-600"
+              : "text-amber-600"
               }`}
           >
             {isIssued

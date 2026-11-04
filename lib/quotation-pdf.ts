@@ -7,28 +7,28 @@ type Quote = Prisma.QuotationGetPayload<{
   include: { company: { include: { bankAccounts: true } }; items: true };
 }>;
 
-type PDF = PDFKit.PDFDocument;
 const C = {
   navy: "#14253F", navy2: "#223B5C", gold: "#BD9455", ink: "#1E293B",
   muted: "#64748B", line: "#DFE6EF", soft: "#F4F7FB", white: "#FFFFFF",
   green: "#157347", red: "#B42318", blue: "#2563EB",
 };
-const W = 595.28, H = 841.89, L = 43, R = 552, CW = R - L;
+const W = 595.28, L = 43, R = 552, CW = R - L;
 const TOP = 144, BOTTOM = 745;
 const safe = (v: unknown) => String(v ?? "").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, " ").trim();
 const money = (v: { toString(): string } | number, currency: string) =>
   `${currency === "PEN" ? "S/" : "US$"} ${Number(v.toString()).toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const number = (v: { toString(): string }) => Number(v.toString()).toLocaleString("es-PE", { maximumFractionDigits: 2 });
 const date = (v: Date | null | undefined) => v ? new Intl.DateTimeFormat("es-PE", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" }).format(v) : "—";
-const time = (v: Date | null | undefined) => v ? new Intl.DateTimeFormat("es-PE", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false }).format(v) : "";
 const statusText: Record<string, string> = { DRAFT: "BORRADOR", SENT: "ENVIADA", ACCEPTED: "ACEPTADA", REJECTED: "RECHAZADA", EXPIRED: "VENCIDA", CANCELLED: "ANULADA" };
 const unitText: Record<string, string> = { DAY: "día(s)", TRIP: "viaje(s)", SERVICE: "servicio(s)", MONTH: "mes(es)" };
 
 export async function createQuotationPdf(quote: Quote, verificationUrl: string): Promise<Buffer> {
   const qr = await QRCode.toBuffer(verificationUrl, { type: "png", width: 320, margin: 1, errorCorrectionLevel: "M" });
   return new Promise<Buffer>((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margins: { top: 38, bottom: 42, left: L, right: W - R }, bufferPages: true,
-      info: { Title: `Cotización ${quote.code}`, Author: safe(quote.company.legalName), Subject: "Propuesta comercial de servicios" } });
+    const doc = new PDFDocument({
+      size: "A4", margins: { top: 38, bottom: 42, left: L, right: W - R }, bufferPages: true,
+      info: { Title: `Cotización ${quote.code}`, Author: safe(quote.company.legalName), Subject: "Propuesta comercial de servicios" }
+    });
     const chunks: Buffer[] = [];
     doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("error", reject);
@@ -49,7 +49,7 @@ export async function createQuotationPdf(quote: Quote, verificationUrl: string):
       const state = statusText[quote.status] ?? quote.status;
       doc.font("Helvetica").fontSize(8).fillColor(C.muted).text(`Estado: ${state}`, 355, 78, { width: 197, align: "right" });
       rule(103);
-      const info = [quote.company.address, [quote.company.phone, quote.company.email].filter(Boolean).join("   |   ")].filter(Boolean).map(safe).join("   ·   ");
+      const info = [quote.company.address].filter(Boolean).map(safe).join("   ·   ");
       doc.font("Helvetica").fontSize(7.4).fillColor(C.muted).text(info, L, 112, { width: CW, height: 22, ellipsis: true });
     };
     const newPage = () => { doc.addPage(); header(); return TOP; };

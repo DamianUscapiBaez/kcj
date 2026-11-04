@@ -25,11 +25,35 @@ const quoteSchema = z.object({
   terms: z.string().max(4000), items: z.array(lineSchema).min(1).max(100),
 });
 export type QuoteInput = z.input<typeof quoteSchema>;
-const decimal = (v: string | number | Prisma.Decimal) => new Prisma.Decimal(v);
+const decimal = (v: string | number | Prisma.Decimal | { toString(): string }) =>
+  new Prisma.Decimal(String(v));
 const money = (v: Prisma.Decimal) => v.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 const dateOnly = (s: string) => new Date(`${s}T12:00:00.000Z`);
 const dayString = (d: Date) => d.toISOString().slice(0, 10);
 const bad = (message: string) => ({ ok: false as const, message });
+
+// Mantener esta regla sincronizada con quotation-client.tsx.
+// Menos de un mes: 1–29 días; un mes o más: 30+ días.
+const DAY_MS = 86_400_000;
+function inclusiveDays(start: string, end: string): number {
+  return Math.round((dateOnly(end).getTime() - dateOnly(start).getTime()) / DAY_MS) + 1;
+}
+
+function calendarMonthsRoundedUp(start: string, end: string): number {
+  const [sy, sm, sd] = start.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  const endMs = Date.UTC(ey, em - 1, Number(end.slice(8)));
+  const anniversary = (offset: number) => {
+    const monthIndex = sm - 1 + offset;
+    const year = sy + Math.floor(monthIndex / 12);
+    const month = ((monthIndex % 12) + 12) % 12;
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return Date.UTC(year, month, Math.min(sd, lastDay));
+  };
+  let months = (ey - sy) * 12 + em - sm;
+  if (anniversary(months) > endMs + DAY_MS) months--;
+  return Math.max(1, months + (anniversary(months) < endMs + DAY_MS ? 1 : 0));
+}
 
 export async function saveQuotation(id: string | null, input: QuoteInput) {
   try {
@@ -45,32 +69,38 @@ export async function saveQuotation(id: string | null, input: QuoteInput) {
     if (!Number.isFinite(v.exchangeRate)) return bad("Tipo de cambio inválido.");
     const fx = decimal(v.exchangeRate);
     const rateIds = [...new Set(v.items.map(x => x.serviceRateId).filter(Boolean))];
-    if (rateIds.length !== new Set(v.items.map(x => x.serviceRateId)).size || v.items.some(x => !x.serviceRateId)) {
-      if (v.items.some(x => !x.serviceRateId)) return bad("Selecciona una tarifa para cada línea.");
+    if (v.items.some(x => !x.serviceRateId)) {
+      return bad("Selecciona una tarifa para cada línea.");
     }
     const rates = await prisma.serviceRate.findMany({
       where: { companyId, id: { in: rateIds } },
-      include: { service: { select: { isActive: true } }, vehicleModel: { select: { isActive: true, vehicleType: { select: { isActive: true } } } }, rateCondition: { select: { isActive: true } }, durationBand: { select: { isActive: true, minDays: true, maxDays: true } } },
+      include: { service: { select: { isActive: true } }, vehicleModel: { select: { isActive: true, vehicleType: { select: { isActive: true } } } } },
     });
     const map = new Map(rates.map(r => [r.id, r]));
     const today = new Date().toISOString().slice(0, 10);
-    const rows = [];
+    const rows: Omit<Prisma.QuotationItemCreateManyInput, "quotationId">[] = [];
     for (let index = 0; index < v.items.length; index++) {
       const line = v.items[index];
       const rate = map.get(line.serviceRateId);
       if (!rate || rate.companyId !== companyId || rate.serviceId !== line.serviceId ||
-          (rate.vehicleModelId ?? "") !== line.vehicleModelId || rate.unit !== line.unit ||
-          false) return bad(`La tarifa de la línea ${index + 1} no coincide con el servicio, modelo o unidad.`);
+        (rate.vehicleModelId ?? "") !== line.vehicleModelId || rate.unit !== line.unit) return bad(`La tarifa de la línea ${index + 1} no coincide con el servicio, modelo o unidad.`);
       const old = existing?.items.find(x => x.position === index + 1 && x.serviceRateId === rate.id);
-      if (!old && (!rate.isActive || !rate.service.isActive || rate.vehicleModel?.isActive === false || rate.vehicleModel?.vehicleType.isActive === false || rate.rateCondition?.isActive === false || rate.durationBand?.isActive === false ||
-          (rate.validFrom && dayString(rate.validFrom) > today) || (rate.validUntil && dayString(rate.validUntil) < today))) return bad(`La tarifa de la línea ${index + 1} no está disponible.`);
+      if (!old && (!rate.isActive || !rate.service.isActive || rate.vehicleModel?.isActive === false || rate.vehicleModel?.vehicleType.isActive === false)) return bad(`La tarifa de la línea ${index + 1} no está disponible.`);
       if (line.serviceStart && line.serviceEnd && line.serviceEnd < line.serviceStart) return bad("La fecha final debe ser posterior o igual a la inicial.");
       if (line.unit === "DAY" || line.unit === "MONTH") {
         if (!line.serviceStart || !line.serviceEnd) return bad("Completa las fechas de inicio y fin.");
-        if (line.unit === "DAY") {
-          const days = Math.round((dateOnly(line.serviceEnd).getTime() - dateOnly(line.serviceStart).getTime()) / 86400000) + 1;
-          if (days !== line.quantity) return bad("La cantidad de días no coincide con las fechas.");
-          if (rate.durationBand && ((rate.durationBand.minDays !== null && days < rate.durationBand.minDays) || (rate.durationBand.maxDays !== null && days > rate.durationBand.maxDays))) return bad("Los días no corresponden al rango de duración de la tarifa.");
+        const days = inclusiveDays(line.serviceStart, line.serviceEnd);
+        if (rate.durationType === "LESS_THAN_MONTH" && days >= 30) {
+          return bad(`La tarifa de la línea ${index + 1} corresponde a menos de 30 días.`);
+        }
+        if (rate.durationType === "GREATER_THAN_MONTH" && days < 30) {
+          return bad(`La tarifa de la línea ${index + 1} requiere al menos 30 días.`);
+        }
+        if (line.unit === "DAY" && days !== line.quantity) {
+          return bad("La cantidad de días no coincide con las fechas.");
+        }
+        if (line.unit === "MONTH" && calendarMonthsRoundedUp(line.serviceStart, line.serviceEnd) !== line.quantity) {
+          return bad("La cantidad de meses no coincide con las fechas.");
         }
       }
       // Precio del catálogo, salvo que sea la misma línea de un borrador existente.
@@ -80,16 +110,18 @@ export async function saveQuotation(id: string | null, input: QuoteInput) {
       const gross = money(decimal(line.quantity).mul(effectivePrice));
       const discount = money(decimal(line.discountAmount));
       if (discount.gt(gross)) return bad("El descuento no puede superar el importe.");
-      rows.push({ companyId, position: index + 1, description: line.description,
+      rows.push({
+        companyId, position: index + 1, description: line.description,
         serviceId: rate.serviceId, vehicleModelId: rate.vehicleModelId,
-        serviceRateId: rate.id, rateConditionId: rate.rateConditionId, durationBandId: rate.durationBandId,
+        serviceRateId: rate.id,
         unit: rate.unit, requestedUnits: null, serviceStart: line.serviceStart ? dateOnly(line.serviceStart) : null,
         serviceEnd: line.serviceEnd ? dateOnly(line.serviceEnd) : null,
         quantity: decimal(line.quantity), sourceCurrency: old?.sourceCurrency ?? rate.currency,
         sourceUnitPrice: sourcePrice, unitPrice: effectivePrice, discountAmount: discount,
-        lineTotal: gross.minus(discount) });
+        lineTotal: gross.minus(discount)
+      });
     }
-    const base = rows.reduce((sum, x) => sum.plus(x.lineTotal), decimal(0));
+    const base = rows.reduce((sum, x) => sum.plus(String(x.lineTotal)), decimal(0));
     const settings = await prisma.companySettings.findUnique({ where: { companyId } });
     const taxRate = decimal(v.taxRate);
     const rateFactor = taxRate.div(100);
@@ -98,11 +130,13 @@ export async function saveQuotation(id: string | null, input: QuoteInput) {
     const total = v.taxIncluded ? money(base) : money(subtotal.plus(taxAmount));
     const expiryDate = dateOnly(v.expiryDate);
     if (dayString(expiryDate) !== v.expiryDate || (!id && v.expiryDate < today)) return bad("Fecha de vencimiento inválida.");
-    const payload = { clientId: v.clientId, clientName: client.legalName,
+    const payload = {
+      clientId: v.clientId, clientName: client.legalName,
       clientDocument: client.documentNumber, clientAddress: client.address,
       currency: v.currency, exchangeRate: fx, exchangeRateAt: new Date(), taxRate, taxIncluded: v.taxIncluded,
       expiryDate, notes: v.notes, terms: v.terms,
-      subtotal, discountAmount: decimal(0), taxAmount, total };
+      subtotal, discountAmount: decimal(0), taxAmount, total
+    };
     let quoteId = id;
     await prisma.$transaction(async tx => {
       if (id) {
@@ -119,11 +153,13 @@ export async function saveQuotation(id: string | null, input: QuoteInput) {
         });
         const prefix = (settings?.quotationPrefix || "COT").trim().toUpperCase();
         const code = `${prefix}-${year}-${String(seq.lastNumber).padStart(5, "0")}`;
-        const created = await tx.quotation.create({ data: {
-          ...payload, companyId, createdById: session.user.id!, year,
-          number: seq.lastNumber, code,
-          statusHistory: { create: { changedById: session.user.id!, toStatus: "DRAFT", note: "Cotización creada" } },
-        } });
+        const created = await tx.quotation.create({
+          data: {
+            ...payload, companyId, createdById: session.user.id!, year,
+            number: seq.lastNumber, code,
+            statusHistory: { create: { changedById: session.user.id!, toStatus: "DRAFT", note: "Cotización creada" } },
+          }
+        });
         quoteId = created.id;
         await tx.quotationItem.createMany({ data: rows.map(x => ({ ...x, quotationId: created.id })) });
       }
@@ -174,6 +210,8 @@ export async function createQuotationReviewLink(quotationId: string): Promise<{ 
   }
 }
 export async function sendQuotationEmail(_id: string, _recipient: string) {
+  void _id;
+  void _recipient;
   await requireSessionCompany(undefined, ["ADMIN", "SALES"]);
   return bad("El envío PDF necesita actualizarse al esquema actual antes de habilitarlo.");
 }

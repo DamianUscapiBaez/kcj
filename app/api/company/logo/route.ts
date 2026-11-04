@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     try {
         const { membership } = await requireSessionCompany(
             undefined,
-            ["OWNER", "ADMIN"]
+            ["ADMIN"]
         );
 
         const companyId = membership.companyId;
@@ -108,7 +108,7 @@ export async function DELETE() {
     try {
         const { membership } = await requireSessionCompany(
             undefined,
-            ["OWNER", "ADMIN"]
+            ["ADMIN"]
         );
 
         const companyId = membership.companyId;

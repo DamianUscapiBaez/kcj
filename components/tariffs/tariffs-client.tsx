@@ -1,4 +1,5 @@
 "use client";
+import { viewStyles } from "../ui/view-styles";
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -75,7 +76,7 @@ export default function TariffsClient({ services, vehicles, rates, canEdit }: {
   }
 
   return (
-    <section className="space-y-6">
+    <section className={viewStyles.page}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-blue-600">Catálogo comercial</p>
@@ -83,12 +84,12 @@ export default function TariffsClient({ services, vehicles, rates, canEdit }: {
           <p className="mt-1 text-sm text-slate-500">Precios independientes en soles y dólares para cada servicio.</p>
         </div>
         {canEdit && <button type="button" onClick={() => setForm(empty())}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+          className={viewStyles.primaryButton}>
           <Plus size={17} /> Nueva tarifa
         </button>}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className={viewStyles.panel}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-5">
           <div className="relative w-full max-w-sm">
             <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -98,7 +99,7 @@ export default function TariffsClient({ services, vehicles, rates, canEdit }: {
           <span className="text-sm text-slate-500">{filtered.length} tarifas</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className={viewStyles.table}>
             <thead className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
               <tr><th className="px-5 py-4">Servicio / vehículo</th><th className="px-5 py-4">Modalidad</th>
                 <th className="px-5 py-4">Soles (PEN)</th><th className="px-5 py-4">Dólares (USD)</th>

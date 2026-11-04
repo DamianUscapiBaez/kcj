@@ -1,11 +1,12 @@
 "use client";
+import { viewStyles } from "../ui/view-styles";
 import {useState,useTransition,type FormEvent} from "react";
 import {useRouter} from "next/navigation";
 import Swal from "sweetalert2";
 import {Plus,Search,Tags} from "lucide-react";
 import {saveServiceRate,setServiceRateActive} from "@/app/actions/rates";
 import type {Props,Rate,RateFormData} from "./types";
-import {buttonClass,emptyRate,inputClass,UNITS} from "./constants";
+import {emptyRate,inputClass,UNITS} from "./constants";
 import RateForm from "./rate-form";
 import RateModal from "./rate-modal";
 import RatesTable from "./rates-table";
@@ -28,8 +29,8 @@ export default function RatesClient({initialServiceId="",query,page,totalPages,t
   }catch(error){console.error(error);await Swal.fire("Error","No se pudo guardar. Revisa las acciones del servidor.","error")}})
  };
  const toggle=async(item:Rate)=>{if(pending||!canEdit)return;const next=!item.isActive;const confirm=await Swal.fire({title:next?"¿Activar tarifa?":"¿Desactivar tarifa?",text:item.name,icon:"question",showCancelButton:true,confirmButtonText:"Confirmar",cancelButtonText:"Cancelar"});if(!confirm.isConfirmed)return;startTransition(async()=>{try{const r=await setServiceRateActive(item.id,next);if(!r.ok){await Swal.fire("No se pudo actualizar",r.message,"error");return}router.refresh();await Swal.fire({icon:"success",title:r.message,timer:1200,showConfirmButton:false})}catch(e){console.error(e);await Swal.fire("Error","No se pudo actualizar.","error")}})};
- return <section className="space-y-5"><header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><Tags className="text-blue-600"/>Tarifas</h1><p className="text-sm text-slate-500">Tarifas en USD según unidad de cobro.</p></div>{canEdit&&<button type="button" className={buttonClass} onClick={create} disabled={pending}><Plus size={17}/>Nueva tarifa</button>}</header>
- <div className="overflow-hidden rounded-2xl border bg-white"><div className="flex flex-wrap items-center justify-between gap-3 border-b p-4"><form className="flex min-w-0 flex-1 flex-wrap gap-2" onSubmit={e=>{e.preventDefault();router.push(url(1,search))}}><div className="relative min-w-[180px] flex-1"><Search size={17} className="absolute left-3 top-3 text-slate-400"/><input className={`${inputClass} pl-10`} placeholder="Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/></div><button type="submit" className="rounded-xl bg-slate-800 px-4 py-2 text-sm text-white">Buscar</button>{query&&<button type="button" className="text-sm text-blue-600" onClick={()=>{setSearch("");router.push(url())}}>Limpiar</button>}</form><span className="text-sm text-slate-500">{totalRecords} registros</span></div><RatesTable rates={rates} canEdit={canEdit} pending={pending} onEdit={edit} onToggle={toggle}/></div>
+ return <section className={viewStyles.page}><header className={viewStyles.header}><div><h1 className={viewStyles.title}><Tags className="text-blue-600"/>Tarifas</h1><p className={viewStyles.subtitle}>Tarifas en USD según unidad de cobro.</p></div>{canEdit&&<button type="button" className={viewStyles.primaryButton} onClick={create} disabled={pending}><Plus size={17}/>Nueva tarifa</button>}</header>
+ <div className={viewStyles.panel}><div className={viewStyles.toolbar}><form className="flex min-w-0 flex-1 flex-wrap gap-2" onSubmit={e=>{e.preventDefault();router.push(url(1,search))}}><div className="relative min-w-[180px] flex-1"><Search size={17} className="absolute left-3 top-3 text-slate-400"/><input className={`${inputClass} pl-10`} placeholder="Buscar..." value={search} onChange={e=>setSearch(e.target.value)}/></div><button type="submit" className="rounded-xl bg-slate-800 px-4 py-2 text-sm text-white">Buscar</button>{query&&<button type="button" className="text-sm text-blue-600" onClick={()=>{setSearch("");router.push(url())}}>Limpiar</button>}</form><span className="text-sm text-slate-500">{totalRecords} registros</span></div><RatesTable rates={rates} canEdit={canEdit} pending={pending} onEdit={edit} onToggle={toggle}/></div>
  <Pagination page={page} totalPages={totalPages} totalRecords={totalRecords} pageSize={pageSize} makeUrl={p=>url(p,query)}/>
  {open&&<RateModal title={`${editing?"Editar":"Registrar"} tarifa`} pending={pending} onClose={()=>setOpen(false)} onSubmit={submit}><RateForm form={rateForm} onChange={setRateForm} services={services} vehicles={vehicles} units={units} editing={!!editing}/></RateModal>}
  </section>;

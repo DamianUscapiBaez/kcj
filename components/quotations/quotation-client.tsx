@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import {
     Plus,
-    Search,
     Trash2,
     X,
     FileSpreadsheet,
@@ -21,71 +20,11 @@ import {
     deleteDraft,
     createQuotationReviewLink,
 } from "@/app/actions/quotations";
-import QuotationActions from "./quotation-actions";
+import type { Option, RateOption, CompanyDefaults, Quote, Line } from "./quotation-types";
+import QuotationList from "./quotation-list";
 
-type Option = { id: string; name: string; description?: string | null; requiresVehicle?: boolean };
-type RateOption = {
-    id: string;
-    name: string;
-    serviceId: string;
-    vehicleModelId: string | null;
-    unit: "DAY" | "TRIP" | "SERVICE" | "MONTH";
-    currency: "PEN" | "USD";
-    price: number;
-    validFrom: string | null;
-    validUntil: string | null;
-    durationBandId: string | null;
-    minDays: number | null;
-    maxDays: number | null;
-    conditionName: string | null;
-    durationName: string | null;
-};
-type CompanyDefaults = {
-    defaultCurrency: "PEN" | "USD";
-    defaultTaxRate: number;
-    defaultValidityDays: number;
-    defaultTerms: string;
-};
-type Quote = {
-    id: string;
-    code: string;
-    clientName: string;
-    status: string;
-    currency: string;
-    total: string;
-    exchangeRate: string;
-    issueDate: string;
-    expiryDate: string;
-    notes: string | null;
-    terms: string | null;
-    taxRate: string;
-    taxIncluded: boolean;
-    clientId: string;
-    items: {
-        description: string;
-        serviceId: string | null;
-        vehicleModelId: string | null;
-        serviceRateId?: string | null;
-        unit: string;
-        quantity: string;
-        unitPrice: string;
-        discountAmount: string;
-        serviceStart?: string | null;
-        serviceEnd?: string | null;
-    }[];
-};
-type Line = {
-    description: string;
-    serviceId: string;
-    vehicleModelId: string;
-    serviceRateId: string;
-    unit: "DAY" | "TRIP" | "SERVICE" | "MONTH";
-    quantity: number;
-    unitPrice: number;
-    discountAmount: number;
-    serviceStart: string;
-    serviceEnd: string;
-};
+type RateUnit = RateOption["unit"];
+type DurationType = NonNullable<RateOption["durationType"]>;
 
 const empty = (): Line => ({
     description: "",
@@ -130,7 +69,6 @@ export default function QuotationClient({
     const [notes, setNotes] = useState("");
     const [terms, setTerms] = useState("");
     const [items, setItems] = useState<Line[]>([empty()]);
-    const [search, setSearch] = useState("");
     const [pending, start] = useTransition();
 
     useEffect(() => {
@@ -194,22 +132,10 @@ export default function QuotationClient({
         );
     }
 
-    // La moneda oficial es independiente de la moneda de cada tarifa.
-    function changeCurrency(nextCurrency: "PEN" | "USD") {
-        if (editId) return;
-        setCurrency(nextCurrency);
-        setItems(previous => previous.map(line => {
-            const rate = rates.find(r => r.id === line.serviceRateId);
-            return { ...line, unitPrice: rate ? converted(rate.price, rate.currency, nextCurrency) : 0 };
-        }));
-    }
-
-    const rateUnitLabel: Record<Line["unit"], string> = {
+    const rateUnitLabel: Record<RateUnit, string> = {
         DAY: "Por día", TRIP: "Por viaje",
-        SERVICE: "Por servicio", MONTH: "Por mes",
+        SERVICE: "Por servicio", MONTH: "Por mes", HOUR: "Por hora",
     };
-
-    const unitOptions: Line["unit"][] = ["DAY", "TRIP", "SERVICE", "MONTH"];
 
     // Las fechas son fechas calendario, no instantes con zona horaria.
     function dateParts(value: string) {
@@ -219,12 +145,6 @@ export default function QuotationClient({
         const ms = Date.UTC(y, m - 1, d);
         if (new Date(ms).toISOString().slice(0, 10) !== value) return null;
         return { y, m, d, ms };
-    }
-
-    function followingDay(date: string): string {
-        const parts = dateParts(date);
-        if (!parts) return date;
-        return new Date(parts.ms + 86400000).toISOString().slice(0, 10);
     }
 
     function quantityForLine(line: Line): number | null {
@@ -254,18 +174,20 @@ export default function QuotationClient({
 
     // El usuario selecciona Servicio -> Tarifa. El modelo se hereda de ServiceRate.
     function ratesForService(serviceId: string) {
-        const today = todayLocal();
-        return rates.filter((r) => r.serviceId === serviceId &&
-            (!r.validFrom || r.validFrom <= today) &&
-            (!r.validUntil || r.validUntil >= today));
+        return rates.filter((r) => r.serviceId === serviceId);
+    }
+
+    function durationLabel(durationType: DurationType | null): string {
+        if (durationType === "LESS_THAN_MONTH") return "Menos de 30 días";
+        if (durationType === "GREATER_THAN_MONTH") return "30 días o más";
+        return "Sin restricción de duración";
     }
 
     function isDurationCompatible(rate: RateOption, line: Line) {
-        if (rate.unit !== "DAY") return true;
+        if (!rate.durationType) return true;
         const days = calculateQuantity("DAY", line.serviceStart, line.serviceEnd);
-        return days === null ||
-            ((rate.minDays === null || days >= rate.minDays) &&
-             (rate.maxDays === null || days <= rate.maxDays));
+        if (days === null) return true; // La validación de fechas ocurre al guardar.
+        return rate.durationType === "LESS_THAN_MONTH" ? days < 30 : days >= 30;
     }
 
     function chooseService(index: number, serviceId: string) {
@@ -327,11 +249,18 @@ export default function QuotationClient({
             return;
         }
         if (items.some((line) => { const rate = rates.find(r => r.id === line.serviceRateId); return rate && !isDurationCompatible(rate, line); })) {
-            void Swal.fire({ icon: "warning", title: "Duración incompatible", text: "Selecciona una tarifa cuyo rango coincida con las fechas del servicio." });
+            void Swal.fire({ icon: "warning", title: "Duración incompatible", text: "Selecciona una tarifa cuya duración coincida con las fechas del servicio." });
             return;
         }
         if (items.some((line) => line.discountAmount > line.quantity * line.unitPrice)) {
             void Swal.fire({ icon: "warning", title: "Descuento inválido", text: "El descuento no puede superar el importe de la línea." });
+            return;
+        }
+        const quotationItems = items.filter(
+            (line): line is Line & { unit: Exclude<RateUnit, "HOUR"> } => line.unit !== "HOUR"
+        );
+        if (quotationItems.length !== items.length) {
+            void Swal.fire({ icon: "warning", title: "Unidad no compatible", text: "Las cotizaciones no admiten tarifas por hora. Selecciona otra tarifa." });
             return;
         }
         start(async () => {
@@ -344,7 +273,7 @@ export default function QuotationClient({
                 expiryDate,
                 notes,
                 terms,
-                items,
+                items: quotationItems,
             });
 
             if (r.ok) {
@@ -515,233 +444,26 @@ export default function QuotationClient({
         });
     }
 
-    const statusLabels: Record<string, string> = {
-        DRAFT: "Borrador",
-        SENT: "Enviada",
-        ACCEPTED: "Aceptada",
-        REJECTED: "Rechazada",
-        EXPIRED: "Vencida",
-        CANCELLED: "Anulada",
-    };
-
-    const filtered = quotes.filter((q) =>
-        [q.code, q.clientName, statusLabels[q.status] ?? q.status].some((x) =>
-            x.toLowerCase().includes(search.toLowerCase())
-        )
-    );
-
-    const getStatusBadge = (statusKey: string) => {
-        const config: Record<string, string> = {
-            DRAFT: "bg-slate-100 text-slate-700 border-slate-200",
-            SENT: "bg-blue-50 text-blue-700 border-blue-200",
-            ACCEPTED: "bg-emerald-50 text-emerald-700 border-emerald-200",
-            REJECTED: "bg-rose-50 text-rose-700 border-rose-200",
-            CANCELLED: "bg-amber-50 text-amber-700 border-amber-200",
-            EXPIRED: "bg-orange-50 text-orange-700 border-orange-200",
-        };
-        return config[statusKey] || "bg-slate-100 text-slate-600 border-slate-200";
-    };
-
     return (
         <section className="space-y-6">
-            {/* Cabecera Principal */}
-            <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                    <p className="eyebrow">VENTAS · DOCUMENTOS</p>
-                    <h1 className="page-title text-2xl font-bold tracking-tight text-slate-900">
-                        Cotizaciones
-                    </h1>
-                    <p className="mt-1 text-sm text-slate-500">
-                        Presupuestos, importes, estados y seguimiento comercial.
-                    </p>
-                </div>
-                {canEdit && (
-                    <button
-                        className="btn-primary flex items-center gap-2 shadow-sm hover:shadow"
-                        onClick={() => begin()}
-                    >
-                        <Plus className="h-4 w-4" /> Nueva cotización
-                    </button>
-                )}
-            </div>
-
-            {/* Contenedor de la Tabla */}
-            <div className="panel overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                {/* Barra de búsqueda y resultados */}
-                <div className="flex flex-col gap-4 border-b border-slate-100 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-
-                    {/* Buscador */}
-                    <div className="relative w-full sm:max-w-md">
-                        <Search
-                            className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400"
-                        />
-
-                        <input
-                            type="search"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Buscar cotizaciones..."
-                            aria-label="Buscar cotizaciones"
-                            className="
-        w-full rounded-xl border border-slate-200
-        bg-slate-50/70 py-2.5 pl-11 pr-10
-        text-sm text-slate-800
-        placeholder:text-slate-400
-        outline-none transition-all duration-200
-        hover:border-slate-300 hover:bg-white
-        focus:border-blue-500 focus:bg-white
-        focus:ring-4 focus:ring-blue-500/10
-      "
-                        />
-
-                        {/* Limpiar búsqueda */}
-                        {search.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={() => setSearch("")}
-                                aria-label="Limpiar búsqueda"
-                                className="
-          absolute right-3 top-1/2 flex h-6 w-6
-          -translate-y-1/2 items-center justify-center
-          rounded-md text-slate-400
-          transition-colors hover:bg-slate-200
-          hover:text-slate-700
-        "
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Contador de documentos */}
-                    <div className="flex shrink-0 items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                            <FileText className="h-4 w-4" />
-                        </div>
-
-                        <div className="flex items-baseline gap-1.5">
-                            <span className="text-sm font-bold tabular-nums text-slate-900">
-                                {filtered.length}
-                            </span>
-                            <span className="text-xs font-medium text-slate-500">
-                                {filtered.length === 1
-                                    ? "cotización encontrada"
-                                    : "cotizaciones encontradas"}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50/80 text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
-                            <tr>
-                                {[
-                                    "Código",
-                                    "Cliente",
-                                    "Emisión",
-                                    "Vencimiento",
-                                    "Estado",
-                                    "Total",
-                                    "Acciones",
-                                ].map((x) => (
-                                    <th key={x} className="px-6 py-3.5 font-semibold">
-                                        {x}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-slate-700">
-                            {filtered.map((q) => (
-                                <tr
-                                    key={q.id}
-                                    className="hover:bg-slate-50/80 transition-colors"
-                                >
-                                    <td className="px-6 py-4 font-mono font-bold text-blue-700">
-                                        {q.code}
-                                    </td>
-                                    <td className="px-6 py-4 font-medium text-slate-900">
-                                        {q.clientName}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-500 text-xs">
-                                        {q.issueDate.slice(0, 10)}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-500 text-xs">
-                                        {q.expiryDate.slice(0, 10)}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span
-                                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(
-                                                q.status
-                                            )}`}
-                                        >
-                                            {statusLabels[q.status] ?? q.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 font-bold text-slate-900">
-                                        {q.currency} {Number(q.total).toFixed(2)}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-1 whitespace-nowrap">
-
-                                            <QuotationActions
-                                                pdfUrl={`/api/cotizaciones/${q.id}/pdf`}
-
-                                                onEdit={() => begin(q)}
-
-                                                onCopyLink={() => copyReviewLink(q.id)}
-
-                                                onMarkSent={() => markSent(q.id)}
-
-                                                onAccept={() => decide(q.id, "ACCEPTED")}
-
-                                                onReject={() => decide(q.id, "REJECTED")}
-
-                                                onCancel={() => annul(q.id)}
-
-                                                onDelete={() => remove(q.id)}
-
-                                                canEdit={canEdit && q.status === "DRAFT"}
-
-                                                canCopyLink={
-                                                    canEdit && ["DRAFT", "SENT"].includes(q.status)
-                                                }
-
-                                                canMarkSent={canEdit && q.status === "DRAFT"}
-
-                                                canAccept={canEdit && q.status === "SENT"}
-
-                                                canReject={canEdit && q.status === "SENT"}
-
-                                                canCancel={
-                                                    canEdit && ["DRAFT", "SENT"].includes(q.status)
-                                                }
-
-                                                canDelete={canEdit && q.status === "DRAFT"}
-                                            />
-
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {!filtered.length && (
-                                <tr>
-                                    <td colSpan={7} className="p-12 text-center text-slate-400">
-                                        No hay cotizaciones registradas.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
+            <QuotationList
+                quotes={quotes}
+                canEdit={canEdit}
+                onCreate={() => begin()}
+                onEdit={begin}
+                onCopyLink={copyReviewLink}
+                onMarkSent={markSent}
+                onAccept={(id) => decide(id, "ACCEPTED")}
+                onReject={(id) => decide(id, "REJECTED")}
+                onCancel={annul}
+                onDelete={remove}
+            />
             {/* Modal de Creación / Edición */}
             {open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-[6px] sm:p-6">
                     <form
                         onSubmit={save}
-                        className="flex h-[min(92dvh,920px)] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-[24px] border border-white/80 bg-white shadow-[0_28px_90px_-25px_rgba(15,23,42,0.55)] sm:rounded-[28px]"
+                        className="flex h-[min(92dvh,920px)] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl border border-white/80 bg-white shadow-[0_28px_90px_-25px_rgba(15,23,42,0.55)] sm:rounded-[28px]"
                     >
                         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-100 bg-white px-5 py-4 sm:px-8 sm:py-5">
                             <h2 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
@@ -757,7 +479,7 @@ export default function QuotationClient({
                         </div>
 
                         {/* Solo el contenido central tiene scroll. Cabecera y acciones siempre visibles. */}
-                        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 [scrollbar-color:#cbd5e1_transparent] [scrollbar-width:thin] sm:px-8 sm:py-6 [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+                        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 [scrollbar-color:#cbd5e1_transparent] scrollbar-thin sm:px-8 sm:py-6 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
                             {/* Datos principales: cliente y vencimiento editable */}
                             <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
                                 <div className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-900">
@@ -837,7 +559,7 @@ export default function QuotationClient({
                                                         <option value="">{line.serviceId ? "Seleccionar tarifa" : "Primero selecciona el servicio"}</option>
                                                         {availableRates.map((r) => {
                                                             const model = r.vehicleModelId ? vehicles.find(v => v.id === r.vehicleModelId)?.name ?? "Modelo" : "Sin vehículo";
-                                                            return <option key={r.id} value={r.id}>{r.name} · {model} · {r.conditionName ?? "General"} · {r.durationName ?? "Sin rango"} · {r.currency === "USD" ? "US$" : "S/"} {r.price.toFixed(2)}</option>;
+                                                            return <option key={r.id} value={r.id}>{r.name} · {model} · {durationLabel(r.durationType)} · {r.currency === "USD" ? "US$" : "S/"} {r.price.toFixed(2)}</option>;
                                                         })}
                                                     </select>
                                                 </label>
@@ -845,15 +567,15 @@ export default function QuotationClient({
                                             {selectedRate && (
                                                 <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-sm text-slate-700">
                                                     <p className="font-semibold text-blue-900">Datos de la tarifa seleccionada</p>
-                                                    <p className="mt-1">Vehículo: <strong>{vehicle?.name ?? "No aplica"}</strong> · Condición: <strong>{selectedRate.conditionName ?? "General"}</strong> · Duración: <strong>{selectedRate.durationName ?? "Sin rango"}</strong></p>
+                                                    <p className="mt-1">Vehículo: <strong>{vehicle?.name ?? "No aplica"}</strong> · Duración: <strong>{durationLabel(selectedRate.durationType)}</strong></p>
                                                     <p className="mt-1">Precio unitario: <strong>{selectedRate.currency === "USD" ? "US$" : "S/"} {selectedRate.price.toFixed(2)}</strong> / {rateUnitLabel[selectedRate.unit]}</p>
                                                 </div>
                                             )}
                                             {line.serviceId && availableRates.length === 0 && (
-                                                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Este servicio no tiene tarifas vigentes. Configúralas desde Servicios → Administrar tarifas.</p>
+                                                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Este servicio no tiene tarifas activas. Configúralas desde Servicios → Administrar tarifas.</p>
                                             )}
                                             {!durationValid && (
-                                                <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">La duración elegida no corresponde al rango de esta tarifa. Selecciona otra tarifa del servicio o ajusta las fechas.</p>
+                                                <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">La duración elegida no corresponde al tipo de esta tarifa. Selecciona otra tarifa del servicio o ajusta las fechas.</p>
                                             )}
                                             <label className="grid gap-1.5 text-xs font-semibold text-slate-600">Descripción del servicio
                                                 <input required minLength={2} value={line.description} onChange={(e) => update(index, "description", e.target.value)}

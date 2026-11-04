@@ -1,4 +1,5 @@
 "use client";
+import { viewStyles } from "../ui/view-styles";
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -385,9 +386,9 @@ export default function ClientsClient({
     }
 
     return (
-        <section className="space-y-6">
+        <section className={viewStyles.page}>
             {/* ENCABEZADO */}
-            <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div className={viewStyles.header}>
                 <div>
                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
                         Gestión comercial
@@ -408,7 +409,7 @@ export default function ClientsClient({
                         type="button"
                         onClick={openCreate}
                         disabled={pending}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                        className={viewStyles.primaryButton}
                     >
                         <Plus className="h-4 w-4" />
                         Nuevo cliente
@@ -417,8 +418,8 @@ export default function ClientsClient({
             </div>
 
             {/* TABLA */}
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className={viewStyles.panel}>
+                <div className={viewStyles.toolbar}>
                     <div className="relative w-full sm:max-w-sm">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
@@ -443,8 +444,8 @@ export default function ClientsClient({
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wider text-slate-600">
+                    <table className={viewStyles.table}>
+                        <thead className={viewStyles.tableHead}>
                             <tr>
                                 <th className="px-5 py-4">Documento</th>
                                 <th className="px-5 py-4">Cliente</th>
