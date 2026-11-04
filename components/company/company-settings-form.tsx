@@ -1,7 +1,15 @@
 "use client";
 
-import { useState, useTransition, type SyntheticEvent } from "react";
+import {
+    useState,
+    useTransition,
+    type FormEvent,
+} from "react";
+
 import { useRouter } from "next/navigation";
+import Swal from "sweetalert2";
+import { FileText, Loader2, ShieldAlert } from "lucide-react";
+
 import {
     saveCompanySettings,
     type CompanySettingsInput,
@@ -17,68 +25,103 @@ export default function CompanySettingsForm({
     canEdit,
 }: Props) {
     const router = useRouter();
-    const [form, setForm] = useState(initialData);
-    const [pending, startTransition] = useTransition();
-    const [message, setMessage] = useState("");
-    const [success, setSuccess] = useState(false);
 
-    function submit(event: SyntheticEvent<HTMLFormElement>) {
+    const [form, setForm] =
+        useState<CompanySettingsInput>(initialData);
+
+    const [pending, startTransition] = useTransition();
+
+    function updateField<K extends keyof CompanySettingsInput>(
+        field: K,
+        value: CompanySettingsInput[K]
+    ) {
+        setForm((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    }
+
+    function submit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
 
         if (!canEdit || pending) return;
 
-        setMessage("");
-
         startTransition(async () => {
-            const result = await saveCompanySettings(form);
+            try {
+                const result = await saveCompanySettings(form);
 
-            setSuccess(result.ok);
-            setMessage(result.message);
+                if (result.ok) {
+                    await Swal.fire({
+                        icon: "success",
+                        title: "Configuración guardada",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                        timer: 1800,
+                        showConfirmButton: false,
+                    });
 
-            if (result.ok) router.refresh();
+                    router.refresh();
+                } else {
+                    await Swal.fire({
+                        icon: "error",
+                        title: "No se pudo guardar",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                    });
+                }
+            } catch (error) {
+                console.error(
+                    "Error al guardar configuración:",
+                    error
+                );
+
+                await Swal.fire({
+                    icon: "error",
+                    title: "Error inesperado",
+                    text: "Ocurrió un error al guardar la configuración.",
+                    confirmButtonColor: "#2563eb",
+                });
+            }
         });
     }
 
     const inputClass =
-        "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100";
+        "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
 
     return (
-        <form onSubmit={submit} className="space-y-6">
-            <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                    Configuración de cotizaciones
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                    Valores predeterminados para nuevas cotizaciones.
-                </p>
+        <form
+            onSubmit={submit}
+            className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-xl shadow-slate-100"
+        >
+            {/* Encabezado con Icono */}
+            <div className="flex items-center gap-4 border-b border-slate-100 bg-slate-50/50 px-6 py-5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-4 ring-blue-50/50">
+                    <FileText className="h-6 w-6" />
+                </div>
+                <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                        Configuración de cotizaciones
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                        Define los valores predeterminados que utilizará KCJ al crear nuevas cotizaciones.
+                    </p>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div>
-                    <label className="mb-2 block text-sm font-medium">
-                        Moneda predeterminada
-                    </label>
-                    <select
-                        value={form.defaultCurrency}
-                        disabled={!canEdit || pending}
-                        onChange={(e) =>
-                            setForm({
-                                ...form,
-                                defaultCurrency: e.target.value as "PEN" | "USD",
-                            })
-                        }
-                        className={inputClass}
-                    >
-                        <option value="PEN">Soles (PEN)</option>
-                        <option value="USD">Dólares (USD)</option>
-                    </select>
-                </div>
+            {/* Campos del formulario */}
+            <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
 
+                {/* IGV */}
                 <div>
-                    <label className="mb-2 block text-sm font-medium">
-                        IGV predeterminado (%)
+                    <label
+                        htmlFor="defaultTaxRate"
+                        className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase"
+                    >
+                        IGV predeterminado (%) <span className="text-red-500">*</span>
                     </label>
+
                     <input
+                        id="defaultTaxRate"
                         type="number"
                         min="0"
                         max="100"
@@ -87,20 +130,30 @@ export default function CompanySettingsForm({
                         value={String(form.defaultTaxRate)}
                         disabled={!canEdit || pending}
                         onChange={(e) =>
-                            setForm({
-                                ...form,
-                                defaultTaxRate: Number(e.target.value),
-                            })
+                            updateField(
+                                "defaultTaxRate",
+                                e.target.value
+                            )
                         }
                         className={inputClass}
                     />
+
+                    <p className="mt-1.5 text-xs text-slate-500">
+                        Porcentaje aplicado por defecto a las nuevas cotizaciones.
+                    </p>
                 </div>
 
+                {/* Vigencia */}
                 <div>
-                    <label className="mb-2 block text-sm font-medium">
-                        Días de validez
+                    <label
+                        htmlFor="defaultValidityDays"
+                        className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase"
+                    >
+                        Días de validez <span className="text-red-500">*</span>
                     </label>
+
                     <input
+                        id="defaultValidityDays"
                         type="number"
                         min="1"
                         max="365"
@@ -109,78 +162,107 @@ export default function CompanySettingsForm({
                         value={String(form.defaultValidityDays)}
                         disabled={!canEdit || pending}
                         onChange={(e) =>
-                            setForm({
-                                ...form,
-                                defaultValidityDays: Number(e.target.value),
-                            })
+                            updateField(
+                                "defaultValidityDays",
+                                e.target.value
+                            )
                         }
                         className={inputClass}
                     />
+
+                    <p className="mt-1.5 text-xs text-slate-500">
+                        Vigencia inicial de cada cotización.
+                    </p>
                 </div>
 
-                <div>
-                    <label className="mb-2 block text-sm font-medium">
-                        Prefijo de cotización
+                {/* Prefijo */}
+                <div className="md:col-span-2">
+                    <label
+                        htmlFor="quotationPrefix"
+                        className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase"
+                    >
+                        Prefijo de cotización <span className="text-red-500">*</span>
                     </label>
+
                     <input
+                        id="quotationPrefix"
                         type="text"
-                        maxLength={10}
+                        maxLength={12}
                         required
                         value={form.quotationPrefix}
                         disabled={!canEdit || pending}
                         onChange={(e) =>
-                            setForm({
-                                ...form,
-                                quotationPrefix: e.target.value.toUpperCase(),
-                            })
+                            updateField(
+                                "quotationPrefix",
+                                e.target.value.toUpperCase()
+                            )
                         }
-                        placeholder="CT"
+                        placeholder="COT"
                         className={inputClass}
                     />
+
+                    <p className="mt-1.5 text-xs text-slate-500">
+                        Ejemplo: COT-2026-0001. Solo letras, números y guiones.
+                    </p>
                 </div>
 
+                {/* Términos */}
                 <div className="md:col-span-2">
-                    <label className="mb-2 block text-sm font-medium">
+                    <label
+                        htmlFor="defaultTerms"
+                        className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase"
+                    >
                         Términos y condiciones predeterminados
                     </label>
+
                     <textarea
+                        id="defaultTerms"
                         rows={6}
                         maxLength={5000}
                         value={String(form.defaultTerms ?? "")}
                         disabled={!canEdit || pending}
                         onChange={(e) =>
-                            setForm({
-                                ...form,
-                                defaultTerms: e.target.value,
-                            })
+                            updateField(
+                                "defaultTerms",
+                                e.target.value
+                            )
                         }
-                        placeholder="Condiciones que aparecerán en las cotizaciones..."
+                        placeholder="Escribe las condiciones que aparecerán en las cotizaciones..."
                         className={inputClass}
                     />
+
+                    <div className="mt-1.5 flex justify-between gap-3">
+                        <p className="text-xs text-slate-500">
+                            Condiciones sugeridas para nuevas cotizaciones.
+                        </p>
+
+                        <span className="text-xs tabular-nums text-slate-400">
+                            {String(form.defaultTerms ?? "").length}/5000
+                        </span>
+                    </div>
                 </div>
             </div>
 
-            {message && (
-                <p
-                    role="status"
-                    className={`text-sm ${success ? "text-emerald-600" : "text-red-600"
-                        }`}
-                >
-                    {message}
-                </p>
-            )}
-
-            {canEdit && (
-                <div className="flex justify-end border-t border-slate-100 pt-5">
-                    <button
-                        type="submit"
-                        disabled={pending}
-                        className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                    >
-                        {pending ? "Guardando..." : "Guardar configuración"}
-                    </button>
+            {/* Pie de formulario / Botón de acción */}
+            <div className="border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+                <div className="flex items-center justify-end">
+                    {canEdit ? (
+                        <button
+                            type="submit"
+                            disabled={pending}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition-all hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 disabled:shadow-none"
+                        >
+                            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                            {pending ? "Guardando..." : "Guardar configuración"}
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 border border-amber-200/60">
+                            <ShieldAlert className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                            <span>No tienes permisos para editar la configuración de cotizaciones.</span>
+                        </div>
+                    )}
                 </div>
-            )}
+            </div>
         </form>
     );
 }

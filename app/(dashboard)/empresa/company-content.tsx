@@ -1,38 +1,146 @@
+
 import { connection } from "next/server";
+
 import { prisma } from "@/lib/prisma";
 import { requireSessionCompany } from "@/lib/permissions";
+
 import CompanyTabs from "@/components/company/company-tabs";
 
 export default async function CompanyContent() {
     await connection();
 
+    // ==========================================
+    // 1. SESIÓN Y EMPRESA ACTIVA
+    // ==========================================
+
     const { membership } = await requireSessionCompany();
+
+    // ==========================================
+    // 2. CONSULTAR DATOS DE LA EMPRESA
+    // ==========================================
 
     const company = await prisma.company.findUnique({
         where: {
             id: membership.companyId,
         },
+
         include: {
             settings: true,
+
+            phones: {
+                orderBy: [
+                    { position: "asc" },
+                    { label: "asc" },
+                ],
+            },
+
+            emails: {
+                orderBy: [
+                    { position: "asc" },
+                    { label: "asc" },
+                ],
+            },
+
             bankAccounts: {
-                orderBy: {
-                    bankName: "asc",
-                },
+                orderBy: [
+                    { position: "asc" },
+                    { bankName: "asc" },
+                ],
             },
         },
     });
 
     if (!company) {
         return (
-            <div className="p-8 text-red-600">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
                 No se encontró la empresa.
             </div>
         );
     }
 
-    const canEdit =
-        membership.role === "OWNER" ||
-        membership.role === "ADMIN";
+    // ==========================================
+    // 3. PERMISOS
+    // ==========================================
+
+    // Solo ADMIN puede modificar la configuración.
+    const canEdit = membership.role === "ADMIN";
+
+    // ==========================================
+    // 4. FORMULARIO DE EMPRESA
+    // ==========================================
+
+    const companyData = {
+        taxId: company.taxId,
+        legalName: company.legalName,
+        tradeName: company.tradeName ?? "",
+        address: company.address ?? "",
+    };
+
+    // ==========================================
+    // 5. CONFIGURACIÓN DE COTIZACIONES
+    // ==========================================
+
+    const settingsData = {
+        defaultTaxRate: Number(
+            company.settings?.defaultTaxRate ?? 18
+        ),
+
+        defaultValidityDays:
+            company.settings?.defaultValidityDays ?? 7,
+
+        quotationPrefix:
+            company.settings?.quotationPrefix ?? "COT",
+
+        defaultTerms:
+            company.settings?.defaultTerms ?? "",
+    };
+
+    // ==========================================
+    // 6. TELÉFONOS
+    // ==========================================
+
+    const phonesData = company.phones.map((phone) => ({
+        id: phone.id,
+        label: phone.label,
+        number: phone.number,
+        isPrimary: phone.isPrimary,
+        isActive: phone.isActive,
+        position: phone.position,
+    }));
+
+    // ==========================================
+    // 7. CORREOS ELECTRÓNICOS
+    // ==========================================
+
+    const emailsData = company.emails.map((email) => ({
+        id: email.id,
+        label: email.label,
+        email: email.email,
+        isPrimary: email.isPrimary,
+        isActive: email.isActive,
+        position: email.position,
+    }));
+
+    // ==========================================
+    // 8. CUENTAS BANCARIAS
+    // ==========================================
+
+    const accountsData = company.bankAccounts.map(
+        (account) => ({
+            id: account.id,
+            bankName: account.bankName,
+            accountName: account.accountName ?? "",
+            accountNumber: account.accountNumber,
+            cci: account.cci ?? "",
+            currency: account.currency,
+            isDetraction: account.isDetraction,
+            isActive: account.isActive,
+        })
+    );
+
+    // ==========================================
+    // 9. INTERFAZ
+    // ==========================================
 
     return (
         <main className="mx-auto max-w-6xl space-y-6 p-6">
@@ -46,45 +154,20 @@ export default async function CompanyContent() {
                 </h1>
 
                 <p className="mt-2 text-sm text-slate-500">
-                    Administra los datos de tu empresa, las preferencias
-                    de cotización y las cuentas bancarias.
+                    Administra la información de KCJ, los teléfonos,
+                    correos electrónicos, las preferencias de
+                    cotización y las cuentas bancarias.
                 </p>
             </header>
 
             <CompanyTabs
-                canEdit={canEdit}
+                company={companyData}
                 logoUrl={company.logoUrl}
-                company={{
-                    taxId: company.taxId,
-                    legalName: company.legalName,
-                    tradeName: company.tradeName ?? "",
-                    address: company.address ?? "",
-                    email: company.email ?? "",
-                    phone: company.phone ?? "",
-                }}
-                settings={{
-                    defaultCurrency:
-                        company.settings?.defaultCurrency ?? "PEN",
-                    defaultTaxRate: Number(
-                        company.settings?.defaultTaxRate ?? 18
-                    ),
-                    defaultValidityDays:
-                        company.settings?.defaultValidityDays ?? 7,
-                    quotationPrefix:
-                        company.settings?.quotationPrefix ?? "CT",
-                    defaultTerms:
-                        company.settings?.defaultTerms ?? "",
-                }}
-                accounts={company.bankAccounts.map((account) => ({
-                    id: account.id,
-                    bankName: account.bankName,
-                    accountName: account.accountName ?? "",
-                    accountNumber: account.accountNumber,
-                    cci: account.cci ?? "",
-                    currency: account.currency,
-                    isDetraction: account.isDetraction,
-                    isActive: account.isActive,
-                }))}
+                settings={settingsData}
+                phones={phonesData}
+                emails={emailsData}
+                accounts={accountsData}
+                canEdit={canEdit}
             />
         </main>
     );

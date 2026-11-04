@@ -12,7 +12,7 @@ async function Content() {
     prisma.quotation.findMany({ where: { companyId }, include: { items: { orderBy: { position: "asc" } } }, orderBy: { createdAt: "desc" }, take: 150 }),
     prisma.client.findMany({ where: { companyId, isActive: true }, select: { id: true, legalName: true }, orderBy: { legalName: "asc" } }),
     prisma.service.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true, description: true }, orderBy: { name: "asc" } }),
-    prisma.vehicleType.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.vehicleModel.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
     prisma.serviceRate.findMany({ where: { companyId, isActive: true, service: { isActive: true } }, orderBy: { name: "asc" } }),
     prisma.companySettings.findUnique({ where: { companyId } }),
   ]);
@@ -24,13 +24,13 @@ async function Content() {
       services={services}
       vehicles={vehicles}
       rates={serviceRates.map((r) => ({
-        id: r.id, name: r.name, serviceId: r.serviceId, vehicleTypeId: r.vehicleTypeId,
+        id: r.id, name: r.name, serviceId: r.serviceId, vehicleModelId: r.vehicleModelId,
         unit: r.unit, currency: r.currency, price: Number(r.price),
         validFrom: r.validFrom?.toISOString().slice(0, 10) ?? null,
         validUntil: r.validUntil?.toISOString().slice(0, 10) ?? null,
       }))}
       defaults={{
-        defaultCurrency: settings?.defaultCurrency ?? "PEN",
+        defaultCurrency: "USD",
         defaultTaxRate: Number(settings?.defaultTaxRate ?? 18),
         defaultValidityDays: settings?.defaultValidityDays ?? 7,
         defaultTerms: settings?.defaultTerms ?? "",

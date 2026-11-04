@@ -2,6 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Swal from "sweetalert2";
+import {
+    CreditCard,
+    Plus,
+    Loader2,
+    ShieldAlert,
+    Building,
+    CheckCircle2,
+    XCircle,
+    Trash2,
+    Pencil,
+    Power
+} from "lucide-react";
+
 import {
     saveBankAccount,
     toggleBankAccount,
@@ -29,7 +43,7 @@ const EMPTY: BankAccountInput = {
 };
 
 const inputClass =
-    "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100";
+    "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500";
 
 export default function CompanyBankAccounts({
     accounts,
@@ -41,13 +55,10 @@ export default function CompanyBankAccounts({
     const [form, setForm] = useState<BankAccountInput>(EMPTY);
     const [showForm, setShowForm] = useState(false);
     const [pending, startTransition] = useTransition();
-    const [message, setMessage] = useState("");
-    const [success, setSuccess] = useState(false);
 
     function openCreate() {
         setEditingId(null);
         setForm({ ...EMPTY });
-        setMessage("");
         setShowForm(true);
     }
 
@@ -62,7 +73,6 @@ export default function CompanyBankAccounts({
             isDetraction: account.isDetraction,
             isActive: account.isActive,
         });
-        setMessage("");
         setShowForm(true);
     }
 
@@ -71,15 +81,38 @@ export default function CompanyBankAccounts({
         if (pending || !canEdit) return;
 
         startTransition(async () => {
-            const result = await saveBankAccount(editingId, form);
+            try {
+                const result = await saveBankAccount(editingId, form);
 
-            setSuccess(result.ok);
-            setMessage(result.message);
+                if (result.ok) {
+                    await Swal.fire({
+                        icon: "success",
+                        title: editingId ? "Cuenta actualizada" : "Cuenta creada",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                        timer: 1800,
+                        showConfirmButton: false,
+                    });
 
-            if (result.ok) {
-                setShowForm(false);
-                setEditingId(null);
-                router.refresh();
+                    setShowForm(false);
+                    setEditingId(null);
+                    router.refresh();
+                } else {
+                    await Swal.fire({
+                        icon: "error",
+                        title: "No se pudo guardar",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                    });
+                }
+            } catch (error) {
+                console.error("Error al guardar cuenta bancaria:", error);
+                await Swal.fire({
+                    icon: "error",
+                    title: "Error inesperado",
+                    text: "Ocurrió un problema al guardar la cuenta bancaria.",
+                    confirmButtonColor: "#2563eb",
+                });
             }
         });
     }
@@ -88,99 +121,149 @@ export default function CompanyBankAccounts({
         if (pending || !canEdit) return;
 
         startTransition(async () => {
-            const result = await toggleBankAccount(
-                account.id,
-                account.isActive
-            );
+            try {
+                const result = await toggleBankAccount(
+                    account.id,
+                    account.isActive
+                );
 
-            setSuccess(result.ok);
-            setMessage(result.message);
-
-            if (result.ok) router.refresh();
+                if (result.ok) {
+                    await Swal.fire({
+                        icon: "success",
+                        title: account.isActive ? "Cuenta desactivada" : "Cuenta activada",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                        timer: 1500,
+                        showConfirmButton: false,
+                    });
+                    router.refresh();
+                } else {
+                    await Swal.fire({
+                        icon: "error",
+                        title: "No se pudo cambiar el estado",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                    });
+                }
+            } catch (error) {
+                console.error("Error al cambiar estado:", error);
+                await Swal.fire({
+                    icon: "error",
+                    title: "Error inesperado",
+                    text: "Ocurrió un problema al actualizar la cuenta.",
+                    confirmButtonColor: "#2563eb",
+                });
+            }
         });
     }
 
-    function remove(account: BankAccount) {
+    async function remove(account: BankAccount) {
         if (pending || !canEdit) return;
 
-        if (
-            !window.confirm(
-                `¿Eliminar la cuenta de ${account.bankName}?`
-            )
-        ) {
-            return;
-        }
+        const confirmation = await Swal.fire({
+            title: `¿Eliminar cuenta de ${account.bankName}?`,
+            text: "Esta acción no se puede deshacer.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#dc2626",
+            cancelButtonColor: "#64748b",
+            confirmButtonText: "Sí, eliminar",
+            cancelButtonText: "Cancelar",
+        });
+
+        if (!confirmation.isConfirmed) return;
 
         startTransition(async () => {
-            const result = await deleteBankAccount(account.id);
+            try {
+                const result = await deleteBankAccount(account.id);
 
-            setSuccess(result.ok);
-            setMessage(result.message);
-
-            if (result.ok) router.refresh();
+                if (result.ok) {
+                    await Swal.fire({
+                        icon: "success",
+                        title: "Cuenta eliminada",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                        timer: 1500,
+                        showConfirmButton: false,
+                    });
+                    router.refresh();
+                } else {
+                    await Swal.fire({
+                        icon: "error",
+                        title: "No se pudo eliminar",
+                        text: result.message,
+                        confirmButtonColor: "#2563eb",
+                    });
+                }
+            } catch (error) {
+                console.error("Error al eliminar cuenta:", error);
+                await Swal.fire({
+                    icon: "error",
+                    title: "Error inesperado",
+                    text: "Ocurrió un problema al eliminar la cuenta.",
+                    confirmButtonColor: "#2563eb",
+                });
+            }
         });
     }
 
     return (
         <div className="space-y-6">
+            {/* Cabecera Principal */}
             <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-lg font-semibold text-slate-900">
-                        Cuentas bancarias
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                        Administra las cuentas para tus cotizaciones.
-                    </p>
+                <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-4 ring-blue-50/50">
+                        <CreditCard className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <h2 className="text-base font-bold text-slate-900">
+                            Cuentas bancarias
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                            Administra las cuentas para tus cotizaciones.
+                        </p>
+                    </div>
                 </div>
 
-                {canEdit && (
+                {canEdit && !showForm && (
                     <button
                         type="button"
                         onClick={openCreate}
                         disabled={pending}
-                        className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-200 transition-all hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50"
                     >
-                        + Nueva cuenta
+                        <Plus className="h-4 w-4" />
+                        Nueva cuenta
                     </button>
                 )}
             </div>
 
-            {message && (
-                <p
-                    role="status"
-                    className={`rounded-xl p-3 text-sm ${success
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-red-50 text-red-700"
-                        }`}
-                >
-                    {message}
-                </p>
-            )}
-
+            {/* Formulario desplegable */}
             {showForm && canEdit && (
                 <form
                     onSubmit={submit}
-                    className="space-y-5 rounded-xl border border-blue-200 bg-blue-50/30 p-5"
+                    className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-xl shadow-blue-50/50"
                 >
-                    <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-slate-900">
-                            {editingId ? "Editar cuenta" : "Nueva cuenta"}
-                        </h3>
+                    <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50/40 px-6 py-4">
+                        <div className="flex items-center gap-2 text-blue-900 font-semibold text-sm">
+                            <Building className="h-4 w-4 text-blue-600" />
+                            <span>{editingId ? "Editar cuenta bancaria" : "Registrar nueva cuenta bancaria"}</span>
+                        </div>
 
                         <button
                             type="button"
                             onClick={() => setShowForm(false)}
                             disabled={pending}
-                            className="text-sm text-slate-500 hover:text-slate-900"
+                            className="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
                         >
-                            Cerrar
+                            Cancelar
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-2">
                         <div>
-                            <label className="mb-2 block text-sm font-medium">
-                                Banco *
+                            <label className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase">
+                                Banco <span className="text-red-500">*</span>
                             </label>
                             <input
                                 required
@@ -191,11 +274,12 @@ export default function CompanyBankAccounts({
                                     setForm({ ...form, bankName: e.target.value })
                                 }
                                 placeholder="BCP, Interbank, BBVA..."
+                                disabled={pending}
                             />
                         </div>
 
                         <div>
-                            <label className="mb-2 block text-sm font-medium">
+                            <label className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase">
                                 Titular de la cuenta
                             </label>
                             <input
@@ -206,12 +290,13 @@ export default function CompanyBankAccounts({
                                     setForm({ ...form, accountName: e.target.value })
                                 }
                                 placeholder="Razón social o titular"
+                                disabled={pending}
                             />
                         </div>
 
                         <div>
-                            <label className="mb-2 block text-sm font-medium">
-                                Número de cuenta *
+                            <label className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase">
+                                Número de cuenta <span className="text-red-500">*</span>
                             </label>
                             <input
                                 required
@@ -225,11 +310,12 @@ export default function CompanyBankAccounts({
                                     })
                                 }
                                 placeholder="Número de cuenta bancaria"
+                                disabled={pending}
                             />
                         </div>
 
                         <div>
-                            <label className="mb-2 block text-sm font-medium">
+                            <label className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase">
                                 CCI
                             </label>
                             <input
@@ -240,12 +326,13 @@ export default function CompanyBankAccounts({
                                     setForm({ ...form, cci: e.target.value })
                                 }
                                 placeholder="Código de cuenta interbancaria"
+                                disabled={pending}
                             />
                         </div>
 
                         <div>
-                            <label className="mb-2 block text-sm font-medium">
-                                Moneda
+                            <label className="mb-2 block text-xs font-semibold tracking-wider text-slate-600 uppercase">
+                                Moneda <span className="text-red-500">*</span>
                             </label>
                             <select
                                 className={inputClass}
@@ -256,14 +343,15 @@ export default function CompanyBankAccounts({
                                         currency: e.target.value as "PEN" | "USD",
                                     })
                                 }
+                                disabled={pending}
                             >
                                 <option value="PEN">Soles (PEN)</option>
                                 <option value="USD">Dólares (USD)</option>
                             </select>
                         </div>
 
-                        <div className="flex flex-col justify-center gap-3">
-                            <label className="flex items-center gap-3 text-sm">
+                        <div className="flex flex-col justify-center gap-3 pt-2">
+                            <label className="flex items-center gap-3 text-sm font-medium text-slate-700 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={form.isDetraction}
@@ -273,11 +361,13 @@ export default function CompanyBankAccounts({
                                             isDetraction: e.target.checked,
                                         })
                                     }
+                                    disabled={pending}
+                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                 />
                                 Cuenta de detracciones
                             </label>
 
-                            <label className="flex items-center gap-3 text-sm">
+                            <label className="flex items-center gap-3 text-sm font-medium text-slate-700 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={form.isActive}
@@ -287,18 +377,20 @@ export default function CompanyBankAccounts({
                                             isActive: e.target.checked,
                                         })
                                     }
+                                    disabled={pending}
+                                    className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                 />
                                 Cuenta activa
                             </label>
                         </div>
                     </div>
 
-                    <div className="flex justify-end gap-3">
+                    <div className="border-t border-slate-100 bg-slate-50/50 px-6 py-4 flex justify-end gap-3">
                         <button
                             type="button"
                             disabled={pending}
                             onClick={() => setShowForm(false)}
-                            className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium"
+                            className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                         >
                             Cancelar
                         </button>
@@ -306,21 +398,26 @@ export default function CompanyBankAccounts({
                         <button
                             type="submit"
                             disabled={pending}
-                            className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50"
                         >
+                            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                             {pending ? "Guardando..." : "Guardar cuenta"}
                         </button>
                     </div>
                 </form>
             )}
 
+            {/* Listado de Cuentas */}
             {accounts.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 px-6 py-12 text-center">
-                    <p className="font-medium text-slate-700">
-                        Todavía no hay cuentas bancarias.
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400 mb-3">
+                        <CreditCard className="h-6 w-6" />
+                    </div>
+                    <p className="font-semibold text-slate-800">
+                        Todavía no hay cuentas bancarias registradas.
                     </p>
-                    <p className="mt-2 text-sm text-slate-500">
-                        Registra una cuenta para utilizarla en tus cotizaciones.
+                    <p className="mt-1 text-xs text-slate-500">
+                        Añade una cuenta para poder seleccionarla en tus documentos y cotizaciones.
                     </p>
                 </div>
             ) : (
@@ -328,62 +425,65 @@ export default function CompanyBankAccounts({
                     {accounts.map((account) => (
                         <div
                             key={account.id}
-                            className="rounded-xl border border-slate-200 bg-white p-5"
+                            className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition-all hover:shadow-md"
                         >
-                            <div className="flex items-start justify-between gap-3">
-                                <div>
-                                    <h3 className="font-semibold text-slate-900">
-                                        {account.bankName}
-                                    </h3>
+                            <div>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <h3 className="font-bold text-slate-900 text-base">
+                                            {account.bankName}
+                                        </h3>
+                                        <p className="mt-0.5 text-xs text-slate-500 font-medium">
+                                            {account.accountName || "Sin titular registrado"}
+                                        </p>
+                                    </div>
 
-                                    <p className="mt-1 text-xs text-slate-500">
-                                        {account.accountName || "Sin titular registrado"}
-                                    </p>
+                                    <span
+                                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${account.isActive
+                                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
+                                                : "bg-slate-100 text-slate-600 border border-slate-200/60"
+                                            }`}
+                                    >
+                                        {account.isActive ? (
+                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                        ) : (
+                                            <XCircle className="h-3.5 w-3.5" />
+                                        )}
+                                        {account.isActive ? "Activa" : "Inactiva"}
+                                    </span>
                                 </div>
 
-                                <span
-                                    className={`rounded-full px-3 py-1 text-xs font-medium ${account.isActive
-                                            ? "bg-emerald-50 text-emerald-700"
-                                            : "bg-slate-100 text-slate-600"
-                                        }`}
-                                >
-                                    {account.isActive ? "Activa" : "Inactiva"}
-                                </span>
-                            </div>
+                                <div className="mt-4 space-y-2 text-sm text-slate-600 border-t border-slate-100 pt-4">
+                                    <div className="flex justify-between">
+                                        <span className="font-medium text-slate-500 text-xs uppercase tracking-wider">Cuenta ({account.currency}):</span>
+                                        <span className="font-mono font-semibold text-slate-900">{account.accountNumber}</span>
+                                    </div>
 
-                            <div className="mt-4 space-y-2 text-sm text-slate-600">
-                                <p>
-                                    <span className="font-medium">Cuenta:</span>{" "}
-                                    {account.accountNumber}
-                                </p>
+                                    {account.cci && (
+                                        <div className="flex justify-between">
+                                            <span className="font-medium text-slate-500 text-xs uppercase tracking-wider">CCI:</span>
+                                            <span className="font-mono text-xs font-medium text-slate-700">{account.cci}</span>
+                                        </div>
+                                    )}
 
-                                {account.cci && (
-                                    <p>
-                                        <span className="font-medium">CCI:</span>{" "}
-                                        {account.cci}
-                                    </p>
-                                )}
-
-                                <p>
-                                    <span className="font-medium">Moneda:</span>{" "}
-                                    {account.currency}
-                                </p>
-
-                                {account.isDetraction && (
-                                    <p className="text-amber-700">
-                                        Cuenta de detracciones
-                                    </p>
-                                )}
+                                    {account.isDetraction && (
+                                        <div className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 border border-amber-200/60">
+                                            <ShieldAlert className="h-3.5 w-3.5 text-amber-600 flex-shrink-0" />
+                                            <span>Cuenta de detracciones</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {canEdit && (
-                                <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                                <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
                                     <button
                                         type="button"
                                         disabled={pending}
                                         onClick={() => openEdit(account)}
-                                        className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"
+                                        className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition-colors disabled:opacity-50"
                                     >
+                                        <Pencil className="h-3.5 w-3.5" />
                                         Editar
                                     </button>
 
@@ -391,8 +491,12 @@ export default function CompanyBankAccounts({
                                         type="button"
                                         disabled={pending}
                                         onClick={() => toggle(account)}
-                                        className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"
+                                        className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-colors disabled:opacity-50 ${account.isActive
+                                                ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                                : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                            }`}
                                     >
+                                        <Power className="h-3.5 w-3.5" />
                                         {account.isActive ? "Desactivar" : "Activar"}
                                     </button>
 
@@ -400,8 +504,9 @@ export default function CompanyBankAccounts({
                                         type="button"
                                         disabled={pending}
                                         onClick={() => remove(account)}
-                                        className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+                                        className="inline-flex items-center gap-1.5 rounded-xl bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors ml-auto disabled:opacity-50"
                                     >
+                                        <Trash2 className="h-3.5 w-3.5" />
                                         Eliminar
                                     </button>
                                 </div>

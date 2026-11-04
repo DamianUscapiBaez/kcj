@@ -29,7 +29,7 @@ export async function saveBankAccount(
     try {
         const { membership } = await requireSessionCompany(
             undefined,
-            ["OWNER", "ADMIN"]
+            ["ADMIN"]
         );
 
         const companyId = membership.companyId;
@@ -102,7 +102,7 @@ export async function toggleBankAccount(
     try {
         const { membership } = await requireSessionCompany(
             undefined,
-            ["OWNER", "ADMIN"]
+            ["ADMIN"]
         );
 
         if (!z.uuid().safeParse(id).success) {
@@ -143,7 +143,7 @@ export async function deleteBankAccount(id: string) {
     try {
         const { membership } = await requireSessionCompany(
             undefined,
-            ["OWNER", "ADMIN"]
+            ["ADMIN"]
         );
 
         if (!z.uuid().safeParse(id).success) {

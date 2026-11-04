@@ -22,7 +22,7 @@ const number = (v: { toString(): string }) => Number(v.toString()).toLocaleStrin
 const date = (v: Date | null | undefined) => v ? new Intl.DateTimeFormat("es-PE", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" }).format(v) : "—";
 const time = (v: Date | null | undefined) => v ? new Intl.DateTimeFormat("es-PE", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false }).format(v) : "";
 const statusText: Record<string, string> = { DRAFT: "BORRADOR", SENT: "ENVIADA", ACCEPTED: "ACEPTADA", REJECTED: "RECHAZADA", EXPIRED: "VENCIDA", CANCELLED: "ANULADA" };
-const unitText: Record<string, string> = { HOUR: "hora(s)", DAY: "día(s)", TRIP: "viaje(s)", SERVICE: "servicio(s)", MONTH: "mes(es)" };
+const unitText: Record<string, string> = { DAY: "día(s)", TRIP: "viaje(s)", SERVICE: "servicio(s)", MONTH: "mes(es)" };
 
 export async function createQuotationPdf(quote: Quote, verificationUrl: string): Promise<Buffer> {
   const qr = await QRCode.toBuffer(verificationUrl, { type: "png", width: 320, margin: 1, errorCorrectionLevel: "M" });
@@ -109,20 +109,21 @@ export async function createQuotationPdf(quote: Quote, verificationUrl: string):
       field("Válida hasta", date(quote.expiryDate), 375, y, 166),
     );
     y += thirdH + 9;
-    if (quote.route || quote.shift) {
-      y = ensure(y, 35);
-      const h = Math.max(field("Ruta", quote.route || "—", L + 8, y, 294), field("Turno", quote.shift || "—", 375, y, 166));
-      y += h + 9;
-    }
 
     y = section("Detalle de los servicios", y + 5);
+    const fx = Number(quote.exchangeRate.toString());
+    const inCurrency = (value: { toString(): string } | number, target: "PEN" | "USD") => {
+      const amount = Number(value.toString());
+      return money(quote.currency === target ? amount : target === "PEN" ? amount * fx : amount / fx, target);
+    };
     const tableHead = () => {
       doc.roundedRect(L, y, CW, 28, 4).fill(C.navy);
       doc.font("Helvetica-Bold").fontSize(7.5).fillColor(C.white);
       doc.text("SERVICIO / DESCRIPCIÓN", L + 10, y + 9, { width: 228 });
-      doc.text("CANT.", 285, y + 9, { width: 45, align: "right" });
-      doc.text("P. UNITARIO", 336, y + 9, { width: 91, align: "right" });
-      doc.text("IMPORTE", 435, y + 9, { width: 106, align: "right" });
+      doc.text("CANTIDAD", 285, y + 9, { width: 45, align: "right" });
+      doc.text("C.U. ($)", 333, y + 9, { width: 64, align: "right" });
+      doc.text("SIN IGV ($)", 400, y + 9, { width: 70, align: "right" });
+      doc.text("SIN IGV (S/)", 475, y + 9, { width: 66, align: "right" });
       y += 34;
     };
     y = ensure(y, 70); tableHead();
@@ -130,9 +131,7 @@ export async function createQuotationPdf(quote: Quote, verificationUrl: string):
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const details = [
-        item.vehicleDescription ? `Vehículo: ${safe(item.vehicleDescription)}` : "",
         item.serviceStart || item.serviceEnd ? `Fechas: ${date(item.serviceStart)}${item.serviceEnd ? ` al ${date(item.serviceEnd)}` : ""}` : "",
-        item.startTime || item.endTime ? `Horario: ${time(item.startTime) || "—"} - ${time(item.endTime) || "—"}` : "",
         `Unidad: ${unitText[item.unit] ?? item.unit}`,
         Number(item.discountAmount.toString()) > 0 ? `Descuento: ${money(item.discountAmount, quote.currency)}` : "",
       ].filter(Boolean);
@@ -149,27 +148,37 @@ export async function createQuotationPdf(quote: Quote, verificationUrl: string):
       doc.font("Helvetica").fontSize(7.7).fillColor(C.muted);
       for (const d of details) { const h = doc.heightOfString(d, { width: 220 }); doc.text(d, L + 10, dy, { width: 220 }); dy += h; }
       doc.font("Helvetica").fontSize(8.5).fillColor(C.ink).text(number(item.quantity), 283, y + 11, { width: 47, align: "right" });
-      doc.text(money(item.unitPrice, quote.currency), 334, y + 11, { width: 93, align: "right" });
-      doc.font("Helvetica-Bold").text(money(item.lineTotal, quote.currency), 431, y + 11, { width: 110, align: "right" });
+      doc.text(inCurrency(item.unitPrice, "USD"), 332, y + 11, { width: 65, align: "right" });
+      doc.font("Helvetica-Bold").fontSize(7.7).text(inCurrency(item.lineTotal, "USD"), 399, y + 11, { width: 71, align: "right" });
+      doc.text(inCurrency(item.lineTotal, "PEN"), 473, y + 11, { width: 68, align: "right" });
       doc.moveTo(L, y + rowH).lineTo(R, y + rowH).strokeColor(C.line).lineWidth(0.5).stroke();
       y += rowH;
     }
     if (!items.length) { y = ensure(y, 32); val("Sin servicios registrados", L + 10, y + 4, CW - 20); y += 30; }
 
     y = ensure(y + 18, 120);
-    doc.font("Helvetica").fontSize(8.4).fillColor(C.muted).text(`Moneda: ${quote.currency === "PEN" ? "Soles (PEN)" : "Dólares estadounidenses (USD)"}`, L + 4, y + 4, { width: 230 });
-    const tx = 333;
-    const totalRow = (text: string, amount: string, yy: number) => {
-      doc.font("Helvetica").fontSize(9).fillColor(C.muted).text(text, tx + 8, yy, { width: 110 });
-      doc.font("Helvetica-Bold").fillColor(C.ink).text(amount, tx + 120, yy, { width: 90, align: "right" });
+    doc.font("Helvetica").fontSize(8.4).fillColor(C.muted).text(`Tipo de cambio: S/ ${fx.toFixed(4)} por US$ 1. Importes de detalle sin IGV.`, L + 4, y + 4, { width: 230 });
+    // El IGV se calcula una sola vez en la moneda contable y se convierte a la otra.
+    // NO se grava dos veces ni se suma el IGV de PEN al total USD.
+    const tx = 260;
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(C.navy).text("CONCEPTO", tx, y, { width: 105 });
+    doc.text("USD ($)", 370, y, { width: 82, align: "right" });
+    doc.text("PEN (S/)", 458, y, { width: 88, align: "right" });
+    y += 20;
+    const totalRow = (title: string, amount: { toString(): string }, yy: number) => {
+      doc.font("Helvetica").fontSize(8.4).fillColor(C.ink).text(title, tx, yy, { width: 105 });
+      doc.text(inCurrency(amount, "USD"), 363, yy, { width: 90, align: "right" });
+      doc.text(inCurrency(amount, "PEN"), 455, yy, { width: 91, align: "right" });
     };
-    totalRow("Subtotal", money(quote.subtotal, quote.currency), y); y += 22;
-    totalRow(`IGV (${quote.taxRate.toString()}%)`, money(quote.taxAmount, quote.currency), y); y += 28;
-    doc.roundedRect(tx, y - 6, R - tx, 43, 6).fill(C.navy);
-    doc.font("Helvetica-Bold").fontSize(10).fillColor(C.white).text("TOTAL", tx + 10, y + 8);
-    doc.fontSize(13).text(money(quote.total, quote.currency), tx + 72, y + 6, { width: 136, align: "right" });
-    y += 55;
-    if (quote.taxIncluded) { y = ensure(y, 17); doc.font("Helvetica").fontSize(7.5).fillColor(C.muted).text("Los precios indicados incluyen IGV.", L + 8, y); y += 18; }
+    totalRow("Subtotal sin IGV", quote.subtotal, y); y += 22;
+    totalRow(`IGV (${quote.taxRate.toString()}%)`, quote.taxAmount, y); y += 25;
+    doc.roundedRect(tx - 6, y - 6, R - tx + 6, 42, 6).fill(C.navy);
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(C.white).text("TOTAL", tx + 4, y + 10, { width: 65 });
+    doc.text(inCurrency(quote.total, "USD"), 352, y + 10, { width: 101, align: "right" });
+    doc.text(inCurrency(quote.total, "PEN"), 454, y + 10, { width: 91, align: "right" });
+    y += 52;
+    if (quote.taxIncluded) { y = ensure(y, 17); doc.font("Helvetica").fontSize(7.5).fillColor(C.muted).text("El importe base incluye IGV; se desglosa el impuesto en el resumen.", L + 8, y); y += 18; }
+    else { y = ensure(y, 17); doc.font("Helvetica").fontSize(7.5).fillColor(C.muted).text("Los precios unitarios y subtotales mostrados no incluyen IGV.", L + 8, y); y += 18; }
 
     y = block("Condiciones comerciales", quote.terms || "", y + 8);
     y = block("Condiciones de pago", quote.paymentTerms || "", y);

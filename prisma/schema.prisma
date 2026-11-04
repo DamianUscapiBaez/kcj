@@ -13,10 +13,8 @@ datasource db {
 }
 
 enum CompanyRole {
-  OWNER
   ADMIN
   SALES
-  VIEWER
 }
 
 enum DocumentType {
@@ -33,11 +31,23 @@ enum Currency {
 }
 
 enum RateUnit {
-  HOUR
+  HOUR // Conservado por compatibilidad histórica; no ofrecer en formularios nuevos
   DAY
   TRIP
   SERVICE
   MONTH
+}
+
+enum DurationType {
+  LESS_THAN_MONTH    // Menor a 1 mes (Alquiler corto/eventual, tarifa diaria normal)
+  GREATER_THAN_MONTH // Mayor a 1 mes (Contrato largo, tarifa diaria con descuento)
+}
+
+enum ServiceType {
+  VEHICLE_RENTAL
+  TRANSPORT
+  DRIVER
+  OTHER
 }
 
 enum QuotationStatus {
@@ -49,77 +59,108 @@ enum QuotationStatus {
   CANCELLED
 }
 
-enum PaymentMethod {
-  CASH
-  TRANSFER
-  CARD
-  OTHER
+enum DocumentStatus {
+  GENERATED
+  VOID
 }
 
 model Company {
-  id           String               @id @default(uuid()) @db.Uuid
-  taxId        String               @unique @map("tax_id") @db.VarChar(20)
-  legalName    String               @map("legal_name") @db.VarChar(200)
-  tradeName    String?              @map("trade_name") @db.VarChar(200)
-  address      String?
-  email        String?              @db.VarChar(200)
-  phone        String?              @db.VarChar(40)
-  logoUrl      String?              @map("logo_url")
-  isActive     Boolean              @default(true) @map("is_active")
-  createdAt    DateTime             @default(now()) @map("created_at")
-  updatedAt    DateTime             @updatedAt @map("updated_at")
-  settings     CompanySettings?
-  bankAccounts CompanyBankAccount[]
-  memberships  CompanyUser[]
-  clients      Client[]
-  services     Service[]
-  vehicleTypes VehicleType[]
-  rates        ServiceRate[]
-  quotations   Quotation[]
-  sequences    QuotationSequence[]
+  id             String                  @id @default(uuid()) @db.Uuid
+  taxId          String                  @unique @map("tax_id") @db.VarChar(20)
+  legalName      String                  @map("legal_name") @db.VarChar(200)
+  tradeName      String?                 @map("trade_name") @db.VarChar(200)
+  address        String?
+  logoUrl        String?                 @map("logo_url")
+  isActive       Boolean                 @default(true) @map("is_active")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  settings       CompanySettings?
+  phones         CompanyPhone[]
+  emails         CompanyEmail[]
+  bankAccounts   CompanyBankAccount[]
+  memberships    CompanyUser[]
+  clients        Client[]
+  vehicleTypes   VehicleType[]
+  vehicleModels  VehicleModel[]
+  services       Service[]
+  rates          ServiceRate[]
+  quotations     Quotation[]
+  sequences      QuotationSequence[]
+  termTemplates  QuotationTermTemplate[]
 
   @@map("companies")
 }
 
 model CompanySettings {
-  companyId           String   @id @map("company_id") @db.Uuid
-  defaultCurrency     Currency @default(PEN) @map("default_currency")
-  defaultTaxRate      Decimal  @default(18.00) @map("default_tax_rate") @db.Decimal(5, 2)
-  defaultValidityDays Int      @default(7) @map("default_validity_days")
-  quotationPrefix     String   @default("CT") @map("quotation_prefix") @db.VarChar(10)
-  defaultTerms        String?  @map("default_terms")
-  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId           String  @id @map("company_id") @db.Uuid
+  defaultTaxRate      Decimal @default(18.00) @map("default_tax_rate") @db.Decimal(5, 2) // porcentaje: 18.00 = 18%
+  defaultValidityDays Int     @default(7) @map("default_validity_days")
+  quotationPrefix     String  @default("COT") @map("quotation_prefix") @db.VarChar(12)
+  defaultTerms        String? @map("default_terms") @db.Text
+  company             Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("company_settings")
+}
+
+model CompanyPhone {
+  id        String  @id @default(uuid()) @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  label     String  @db.VarChar(100)
+  number    String  @db.VarChar(40)
+  isPrimary Boolean @default(false) @map("is_primary")
+  isActive  Boolean @default(true) @map("is_active")
+  position  Int     @default(0)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, number])
+  @@index([companyId, position])
+  @@map("company_phones")
+}
+
+model CompanyEmail {
+  id        String  @id @default(uuid()) @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  label     String  @db.VarChar(100)
+  email     String  @db.VarChar(200)
+  isPrimary Boolean @default(false) @map("is_primary")
+  isActive  Boolean @default(true) @map("is_active")
+  position  Int     @default(0)
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, email])
+  @@index([companyId, position])
+  @@map("company_emails")
 }
 
 model CompanyBankAccount {
   id            String   @id @default(uuid()) @db.Uuid
   companyId     String   @map("company_id") @db.Uuid
-  bankName      String   @map("bank_name") @db.VarChar(100)
+  bankName      String   @map("bank_name") @db.VarChar(120)
   accountName   String?  @map("account_name") @db.VarChar(200)
   accountNumber String   @map("account_number") @db.VarChar(60)
   cci           String?  @db.VarChar(60)
   currency      Currency
   isDetraction  Boolean  @default(false) @map("is_detraction")
   isActive      Boolean  @default(true) @map("is_active")
-  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  position      Int      @default(0)
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
+  @@unique([companyId, bankName, accountNumber])
   @@index([companyId, isActive])
   @@map("company_bank_accounts")
 }
 
 model User {
-  id                String                   @id @default(uuid()) @db.Uuid
-  name              String                   @db.VarChar(160)
-  email             String                   @unique @db.VarChar(200)
-  passwordHash      String?                  @map("password_hash")
-  isActive          Boolean                  @default(true) @map("is_active")
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
-  memberships       CompanyUser[]
-  createdQuotations Quotation[]              @relation("QuotationCreator")
-  statusChanges     QuotationStatusHistory[]
+  id            String                   @id @default(uuid()) @db.Uuid
+  name          String                   @db.VarChar(160)
+  email         String                   @unique @db.VarChar(200)
+  passwordHash  String?                  @map("password_hash")
+  isActive      Boolean                  @default(true) @map("is_active")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+  memberships   CompanyUser[]
+  quotations    Quotation[]              @relation("QuotationCreator")
+  statusChanges QuotationStatusHistory[]
 
   @@map("users")
 }
@@ -138,20 +179,23 @@ model CompanyUser {
 }
 
 model Client {
-  id             String          @id @default(uuid()) @db.Uuid
-  companyId      String          @map("company_id") @db.Uuid
-  documentType   DocumentType    @default(RUC) @map("document_type")
-  documentNumber String          @map("document_number") @db.VarChar(30)
-  legalName      String          @map("legal_name") @db.VarChar(200)
-  address        String?
-  email          String?         @db.VarChar(200)
-  phone          String?         @db.VarChar(40)
-  isActive       Boolean         @default(true) @map("is_active")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
-  company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  contacts       ClientContact[]
-  quotations     Quotation[]
+  id             String       @id @default(uuid()) @db.Uuid
+  companyId      String       @map("company_id") @db.Uuid
+  documentType   DocumentType @default(RUC) @map("document_type")
+  documentNumber String       @map("document_number") @db.VarChar(30)
+  legalName      String       @map("legal_name") @db.VarChar(200)
+
+  phone   String? @db.VarChar(40)
+  email   String? @db.VarChar(200)
+  address String? @db.Text
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company    Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  contacts   ClientContact[]
+  quotations Quotation[]
 
   @@unique([companyId, documentType, documentNumber])
   @@unique([id, companyId])
@@ -160,70 +204,110 @@ model Client {
 }
 
 model ClientContact {
-  id        String  @id @default(uuid()) @db.Uuid
-  clientId  String  @map("client_id") @db.Uuid
-  name      String  @db.VarChar(160)
-  email     String? @db.VarChar(200)
-  phone     String? @db.VarChar(40)
-  position  String? @db.VarChar(100)
+  id       String @id @default(uuid()) @db.Uuid
+  clientId String @map("client_id") @db.Uuid
+
+  name     String  @db.VarChar(160)
+  position String? @db.VarChar(100)
+  phone    String? @db.VarChar(40)
+  email    String? @db.VarChar(200)
+
   isPrimary Boolean @default(false) @map("is_primary")
-  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
   @@map("client_contacts")
 }
 
 model VehicleType {
-  id          String          @id @default(uuid()) @db.Uuid
-  companyId   String          @map("company_id") @db.Uuid
-  name        String          @db.VarChar(120)
-  description String?
-  isActive    Boolean         @default(true) @map("is_active")
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  rates       ServiceRate[]
-  items       QuotationItem[]
+  id          String         @id @default(uuid()) @db.Uuid
+  companyId   String         @map("company_id") @db.Uuid
+  name        String         @db.VarChar(120)
+  description String?        @db.Text
+  isActive    Boolean        @default(true) @map("is_active")
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  models      VehicleModel[]
 
   @@unique([companyId, name])
   @@unique([id, companyId])
   @@map("vehicle_types")
 }
 
+model VehicleModel {
+  id             String          @id @default(uuid()) @db.Uuid
+  companyId      String          @map("company_id") @db.Uuid
+  vehicleTypeId  String          @map("vehicle_type_id") @db.Uuid
+  brand          String          @db.VarChar(100)
+  name           String          @db.VarChar(120)
+  description    String?         @db.Text
+  capacity       Int?
+  isActive       Boolean         @default(true) @map("is_active")
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  vehicleType    VehicleType     @relation(fields: [vehicleTypeId, companyId], references: [id, companyId], onDelete: Restrict)
+  rates          ServiceRate[]
+  quotationItems QuotationItem[]
+
+  @@unique([companyId, brand, name])
+  @@unique([id, companyId])
+  @@index([companyId, vehicleTypeId])
+  @@map("vehicle_models")
+}
+
 model Service {
-  id          String          @id @default(uuid()) @db.Uuid
-  companyId   String          @map("company_id") @db.Uuid
-  code        String          @db.VarChar(40)
-  name        String          @db.VarChar(160)
-  description String?
-  isActive    Boolean         @default(true) @map("is_active")
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  rates       ServiceRate[]
-  items       QuotationItem[]
+  id             String          @id @default(uuid()) @db.Uuid
+  companyId      String          @map("company_id") @db.Uuid
+  code           String          @db.VarChar(40)
+  name           String          @db.VarChar(160)
+  type           ServiceType     @default(OTHER)
+  description    String?         @db.Text
+  isActive       Boolean         @default(true) @map("is_active")
+  requiresVehicle Boolean        @default(false) @map("requires_vehicle")
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  rates          ServiceRate[]
+  quotationItems QuotationItem[]
 
   @@unique([companyId, code])
   @@unique([id, companyId])
   @@map("services")
 }
 
+
+
 model ServiceRate {
-  id            String          @id @default(uuid()) @db.Uuid
-  companyId     String          @map("company_id") @db.Uuid
-  serviceId     String          @map("service_id") @db.Uuid
-  vehicleTypeId String?         @map("vehicle_type_id") @db.Uuid
-  name          String          @db.VarChar(160)
-  unit          RateUnit
-  currency      Currency
-  price         Decimal         @db.Decimal(18, 2)
-  validFrom     DateTime?       @map("valid_from") @db.Date
-  validUntil    DateTime?       @map("valid_until") @db.Date
-  isActive      Boolean         @default(true) @map("is_active")
-  company       Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  service       Service         @relation(fields: [serviceId, companyId], references: [id, companyId], onDelete: Restrict)
-  vehicleType   VehicleType?    @relation(fields: [vehicleTypeId, companyId], references: [id, companyId], onDelete: Restrict)
-  items         QuotationItem[]
+  id             String        @id @default(uuid()) @db.Uuid
+  companyId      String        @map("company_id") @db.Uuid
+  serviceId      String        @map("service_id") @db.Uuid
+  vehicleModelId String?       @map("vehicle_model_id") @db.Uuid
+  durationType   DurationType? @map("duration_type")
+
+  name           String        @db.VarChar(160)
+  description    String?       @db.Text
+  unit           RateUnit      @default(DAY)
+  currency       Currency      @default(USD) // Moneda base de la tarifa; fijar USD desde el servidor
+  price          Decimal       @db.Decimal(18, 4) // Precio base en USD, sin IGV
+  isActive       Boolean       @default(true) @map("is_active")
+
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  service        Service       @relation(fields: [serviceId, companyId], references: [id, companyId], onDelete: Restrict)
+  vehicleModel   VehicleModel? @relation(fields: [vehicleModelId, companyId], references: [id, companyId], onDelete: Restrict)
+  quotationItems QuotationItem[]
 
   @@unique([id, companyId])
-  @@index([companyId, serviceId, vehicleTypeId, isActive])
+  @@index([companyId, serviceId, vehicleModelId, isActive])
   @@map("service_rates")
+}
+
+model QuotationTermTemplate {
+  id        String  @id @default(uuid()) @db.Uuid
+  companyId String  @map("company_id") @db.Uuid
+  name      String  @db.VarChar(120)
+  content   String  @db.Text
+  isActive  Boolean @default(true) @map("is_active")
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, name])
+  @@map("quotation_term_templates")
 }
 
 model QuotationSequence {
@@ -237,43 +321,47 @@ model QuotationSequence {
 }
 
 model Quotation {
-  id                String                   @id @default(uuid()) @db.Uuid
-  companyId         String                   @map("company_id") @db.Uuid
-  clientId          String                   @map("client_id") @db.Uuid
-  createdById       String                   @map("created_by_id") @db.Uuid
-  year              Int
-  number            Int
-  code              String                   @db.VarChar(40)
-  status            QuotationStatus          @default(DRAFT)
-  issueDate         DateTime                 @default(now()) @map("issue_date") @db.Date
-  expiryDate        DateTime                 @map("expiry_date") @db.Date
-  currency          Currency                 @default(PEN)
-  taxRate           Decimal                  @default(18.00) @map("tax_rate") @db.Decimal(5, 2)
-  taxIncluded       Boolean                  @default(false) @map("tax_included")
-  subtotal          Decimal                  @default(0) @db.Decimal(18, 2)
-  taxAmount         Decimal                  @default(0) @map("tax_amount") @db.Decimal(18, 2)
-  total             Decimal                  @default(0) @db.Decimal(18, 2)
-  paymentTerms      String?                  @map("payment_terms")
-  terms             String?
-  notes             String?
-  contactName       String?                  @map("contact_name") @db.VarChar(160)
-  contactEmail      String?                  @map("contact_email") @db.VarChar(200)
-  clientDocument    String                   @map("client_document") @db.VarChar(30)
-  clientName        String                   @map("client_name") @db.VarChar(200)
-  clientAddress     String?                  @map("client_address")
-  sellerName        String?                  @map("seller_name") @db.VarChar(160)
-  route             String?                  @db.VarChar(160)
-  shift             String?                  @db.VarChar(60)
-  verificationToken String?                  @unique @default(uuid())
-  issuedAt          DateTime?
-  createdAt         DateTime                 @default(now()) @map("created_at")
-  updatedAt         DateTime                 @updatedAt @map("updated_at")
-  company           Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  client            Client                   @relation(fields: [clientId, companyId], references: [id, companyId], onDelete: Restrict)
-  createdBy         User                     @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  items             QuotationItem[]
-  statusHistory     QuotationStatusHistory[]
-  review            QuotationReview?
+  id               String                   @id @default(uuid()) @db.Uuid
+  companyId        String                   @map("company_id") @db.Uuid
+  clientId         String                   @map("client_id") @db.Uuid
+  createdById      String                   @map("created_by_id") @db.Uuid
+  year             Int
+  number           Int
+  code             String                   @db.VarChar(40)
+  status           QuotationStatus          @default(DRAFT)
+  verificationToken String                  @unique @default(uuid()) @map("verification_token") @db.Uuid
+  issueDate        DateTime                 @default(now()) @map("issue_date") @db.Date
+  expiryDate       DateTime?                @map("expiry_date") @db.Date
+  currency         Currency                 @default(USD) // Fijar USD en el servidor; PEN se calcula con exchangeRate
+  exchangeRate     Decimal                  @default(1) @map("exchange_rate") @db.Decimal(18, 6) // soles por 1 USD, siempre >0
+  exchangeRateAt   DateTime?                @map("exchange_rate_at")
+  exchangeRateNote String?                  @map("exchange_rate_note") @db.VarChar(200)
+  taxRate          Decimal                  @default(18.00) @map("tax_rate") @db.Decimal(5, 2) // 18.00 = 18%
+  taxIncluded      Boolean                  @default(false) @map("tax_included")
+  subtotal         Decimal                  @default(0) @db.Decimal(18, 2)
+  discountAmount   Decimal                  @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  taxAmount        Decimal                  @default(0) @map("tax_amount") @db.Decimal(18, 2)
+  total            Decimal                  @default(0) @db.Decimal(18, 2)
+  paymentTerms     String?                  @map("payment_terms") @db.Text
+  terms            String?                  @db.Text
+  notes            String?                  @db.Text
+  clientDocument   String                   @map("client_document") @db.VarChar(30)
+  clientName       String                   @map("client_name") @db.VarChar(200)
+  clientAddress    String?                  @map("client_address") @db.Text
+  contactName      String?                  @map("contact_name") @db.VarChar(160)
+  contactEmail     String?                  @map("contact_email") @db.VarChar(200)
+  sellerName       String?                  @map("seller_name") @db.VarChar(160)
+  companySnapshot  Json?                    @map("company_snapshot")
+  issuedAt         DateTime?                @map("issued_at")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
+  company          Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  client           Client                   @relation(fields: [clientId, companyId], references: [id, companyId], onDelete: Restrict)
+  createdBy        User                     @relation("QuotationCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items            QuotationItem[]
+  statusHistory    QuotationStatusHistory[]
+  documents        QuotationDocument[]
+  review           QuotationReview?
 
   @@unique([companyId, year, number])
   @@unique([companyId, code])
@@ -284,28 +372,29 @@ model Quotation {
 }
 
 model QuotationItem {
-  id                 String       @id @default(uuid()) @db.Uuid
-  quotationId        String       @map("quotation_id") @db.Uuid
-  companyId          String       @map("company_id") @db.Uuid
-  serviceId          String?      @map("service_id") @db.Uuid
-  vehicleTypeId      String?      @map("vehicle_type_id") @db.Uuid
-  serviceRateId      String?      @map("service_rate_id") @db.Uuid
-  position           Int
-  description        String
-  vehicleDescription String?      @map("vehicle_description") @db.VarChar(160)
-  unit               RateUnit
-  quantity           Decimal      @db.Decimal(12, 2)
-  unitPrice          Decimal      @map("unit_price") @db.Decimal(18, 2)
-  discountAmount     Decimal      @default(0) @map("discount_amount") @db.Decimal(18, 2)
-  lineTotal          Decimal      @map("line_total") @db.Decimal(18, 2)
-  serviceStart       DateTime?    @map("service_start") @db.Date
-  serviceEnd         DateTime?    @map("service_end") @db.Date
-  startTime          DateTime?    @map("start_time") @db.Time(0)
-  endTime            DateTime?    @map("end_time") @db.Time(0)
-  quotation          Quotation    @relation(fields: [quotationId, companyId], references: [id, companyId], onDelete: Cascade)
-  service            Service?     @relation(fields: [serviceId, companyId], references: [id, companyId], onDelete: Restrict)
-  vehicleType        VehicleType? @relation(fields: [vehicleTypeId, companyId], references: [id, companyId], onDelete: Restrict)
-  serviceRate        ServiceRate? @relation(fields: [serviceRateId, companyId], references: [id, companyId], onDelete: Restrict)
+  id              String         @id @default(uuid()) @db.Uuid
+  quotationId     String         @map("quotation_id") @db.Uuid
+  companyId       String         @map("company_id") @db.Uuid
+  serviceId       String?        @map("service_id") @db.Uuid
+  vehicleModelId  String?        @map("vehicle_model_id") @db.Uuid
+  serviceRateId   String?        @map("service_rate_id") @db.Uuid
+  durationType    DurationType?  @map("duration_type")
+  position        Int
+  description     String         @db.Text
+  unit            RateUnit
+  requestedUnits  Int?           @map("requested_units") // vehiculos solicitados, si aplica
+  serviceStart    DateTime?      @map("service_start") @db.Date
+  serviceEnd      DateTime?      @map("service_end") @db.Date
+  quantity        Decimal        @db.Decimal(12, 2) // unidades facturables (ej. dias-vehiculo)
+  sourceCurrency  Currency       @map("source_currency") // Guardar USD para nuevas cotizaciones
+  sourceUnitPrice Decimal        @map("source_unit_price") @db.Decimal(18, 4)
+  unitPrice       Decimal        @map("unit_price") @db.Decimal(18, 4) // Precio unitario en moneda de la cotización (USD en nuevas cotizaciones)
+  discountAmount  Decimal        @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  lineTotal       Decimal        @map("line_total") @db.Decimal(18, 2)
+  quotation       Quotation      @relation(fields: [quotationId, companyId], references: [id, companyId], onDelete: Cascade)
+  service         Service?       @relation(fields: [serviceId, companyId], references: [id, companyId], onDelete: Restrict)
+  vehicleModel    VehicleModel?  @relation(fields: [vehicleModelId, companyId], references: [id, companyId], onDelete: Restrict)
+  serviceRate     ServiceRate?   @relation(fields: [serviceRateId, companyId], references: [id, companyId], onDelete: Restrict)
 
   @@unique([quotationId, position])
   @@index([companyId, serviceId])
@@ -318,7 +407,7 @@ model QuotationStatusHistory {
   changedById String           @map("changed_by_id") @db.Uuid
   fromStatus  QuotationStatus? @map("from_status")
   toStatus    QuotationStatus  @map("to_status")
-  note        String?
+  note        String?          @db.Text
   changedAt   DateTime         @default(now()) @map("changed_at")
   quotation   Quotation        @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   changedBy   User             @relation(fields: [changedById], references: [id], onDelete: Restrict)
@@ -327,6 +416,21 @@ model QuotationStatusHistory {
   @@map("quotation_status_histories")
 }
 
+model QuotationDocument {
+  id          String         @id @default(uuid()) @db.Uuid
+  quotationId String         @map("quotation_id") @db.Uuid
+  version     Int            @default(1)
+  fileName    String         @map("file_name") @db.VarChar(255)
+  storageKey  String         @map("storage_key") @db.Text
+  status      DocumentStatus @default(GENERATED)
+  generatedAt DateTime       @default(now()) @map("generated_at")
+  quotation   Quotation      @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@unique([quotationId, version])
+  @@map("quotation_documents")
+}
+
+// Enlace de respuesta del cliente: guardar solo el hash del token.
 model QuotationReview {
   id          String    @id @default(uuid()) @db.Uuid
   quotationId String    @unique @map("quotation_id") @db.Uuid
@@ -334,11 +438,7 @@ model QuotationReview {
   expiresAt   DateTime  @map("expires_at")
   respondedAt DateTime? @map("responded_at")
   observation String?   @db.Text
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-
-  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   @@index([expiresAt])
   @@map("quotation_reviews")
 }

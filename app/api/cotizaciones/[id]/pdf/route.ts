@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getActiveMemberships } from "@/lib/permissions";
@@ -24,7 +23,7 @@ export async function GET(
     return NextResponse.json({ error: "Sin acceso" }, { status: 403 });
   }
 
-  const quotation = await prisma.quotation.findFirst({
+  let quotation = await prisma.quotation.findFirst({
     where: { id, companyId: { in: memberships.map((m) => m.companyId) } },
     include: {
       company: { include: { bankAccounts: { where: { isActive: true } } } },
@@ -36,23 +35,22 @@ export async function GET(
     return NextResponse.json({ error: "Cotización no encontrada" }, { status: 404 });
   }
 
+  // Cotizaciones antiguas: asignar token al generar el PDF, sin bloquear la descarga.
   if (!quotation.verificationToken) {
-    return NextResponse.json(
-      { error: "Cotización sin token de verificación. Revisa las migraciones." },
-      { status: 409 }
-    );
+    try {
+      const updated = await prisma.quotation.update({
+        where: { id: quotation.id },
+        data: { verificationToken: crypto.randomUUID() },
+      });
+      quotation = { ...quotation, verificationToken: updated.verificationToken };
+    } catch (error) {
+      console.error("No se pudo asignar token de verificación", error);
+      return NextResponse.json({ error: "No se pudo habilitar la verificación de esta cotización. Comprueba la migración de verification_token." }, { status: 500 });
+    }
   }
 
-  // Detección dinámica y robusta de la URL base
-  const headersList = await headers();
-  const host = headersList.get("x-forwarded-host") || headersList.get("host");
-  const proto = headersList.get("x-forwarded-proto") || "https";
-
-  const base =
-    (host ? `${proto}://${host}` : null) ||
-    process.env.APP_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.NODE_ENV !== "production" ? "http://localhost:3000" : "");
+  // URL configurada: no confiar en cabeceras Host para construir QR.
+  const base = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "";
 
   if (!base || !/^https?:\/\//.test(base)) {
     return NextResponse.json(

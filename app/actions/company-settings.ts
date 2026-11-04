@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 const settingsSchema = z.object({
-    defaultCurrency: z.enum(["PEN", "USD"]),
     defaultTaxRate: z.coerce.number().min(0).max(100),
     defaultValidityDays: z.coerce.number().int().min(1).max(365),
     quotationPrefix: z
@@ -26,14 +25,13 @@ export async function saveCompanySettings(
     try {
         const { membership } = await requireSessionCompany(
             undefined,
-            ["OWNER", "ADMIN"]
+            ["ADMIN"]
         );
 
         const data = settingsSchema.parse(input);
         const companyId = membership.companyId;
 
         const values = {
-            defaultCurrency: data.defaultCurrency,
             defaultTaxRate: data.defaultTaxRate,
             defaultValidityDays: data.defaultValidityDays,
             quotationPrefix: data.quotationPrefix.toUpperCase(),

@@ -1,0 +1,4 @@
+import type {ReactNode} from "react";
+import {inputClass} from "./constants";
+export function Field({title,children}:{title:string;children:ReactNode}){return <label className="block min-w-0 space-y-2 text-xs font-semibold text-slate-600"><span className="block">{title}</span>{children}</label>}
+export function ChoiceSelect({title,value,onChange,items,optional=false}:{title:string;value:string;onChange:(v:string)=>void;items:{id:string;name:string;isActive:boolean}[];optional?:boolean}){return <Field title={title}><select className={inputClass} required={!optional} value={value} onChange={e=>onChange(e.target.value)}><option value="">{optional?"Sin asignar":"Seleccionar..."}</option>{items.filter(i=>i.isActive||i.id===value).map(i=><option key={i.id} value={i.id} disabled={!i.isActive}>{i.name}{!i.isActive?" (inactivo)":""}</option>)}</select></Field>}

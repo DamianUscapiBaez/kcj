@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -15,6 +13,7 @@
 
 # next.js
 /.next/
+**/.next/
 /out/
 
 # production
@@ -30,7 +29,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (never commit secrets; the example is tracked)
+# environment
 .env*
 !.env.example
 
@@ -41,4 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/app/generated/prisma
+# prisma
+/app/generated/prisma/
+/prisma/migrations/
+
+# temporary files
+*.log
